@@ -1,2 +1,6 @@
-pyscf 
 streamlit
+watchdog
+matplotlib
+rdkit
+pyscf[all]
+geometric
