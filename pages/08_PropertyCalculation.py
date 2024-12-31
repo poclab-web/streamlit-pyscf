@@ -1,5 +1,5 @@
 """
-軌道の計算と表示を行うもの
+電子密度解析, 結合次数, 双極子モーメントなどの計算
 TODO: 改修中
 """
 
@@ -11,7 +11,7 @@ import py3Dmol
 st.title("PySCF CUBEファイル生成と分子構造表示アプリ")
 
 # 分子構造入力
-st.sidebar.header("分子の設定")
+st.header("分子の設定")
 default_atom = '''
 C      0.294808    1.728651    0.000003
 H     -0.501745    1.141642    0.407216
@@ -19,39 +19,53 @@ H      0.143963    1.853765   -1.051896
 H      0.309979    2.687482    0.474676
 H      1.227038    1.231716    0.170017
 '''
-atom_input = st.sidebar.text_area("原子の座標 (XYZ形式)", default_atom, height=150)
-basis = st.sidebar.selectbox("基底関数", ["sto-3g", "6-31g", "cc-pVDZ"], index=0)
-charge = st.sidebar.number_input("分子の電荷", value=0, step=1)
-spin = st.sidebar.number_input("スピン (2S)", value=0, step=1)
+atom_input = st.text_area("原子の座標 (XYZ形式)", default_atom, height=150)
 
 # 3D表示関数
+def validate_and_format_xyz(input_data):
+    try:
+        # 空行を削除し、各行を分割して確認
+        lines = [line.strip() for line in input_data.strip().split("\n") if line.strip()]
+        formatted_data = ""
+        for line in lines:
+            parts = line.split()
+            if len(parts) != 4:  # 原子記号 + 3座標が必要
+                raise ValueError("各行は '原子記号 X Y Z' の形式で入力してください")
+            formatted_data += f"{parts[0]} {float(parts[1]):.6f} {float(parts[2]):.6f} {float(parts[3]):.6f}\n"
+        return formatted_data.strip()
+    except Exception as e:
+        raise ValueError(f"入力フォーマットエラー: {e}")
+
 def show_3d_structure(atom_data):
     # py3Dmolで3D分子構造を表示
     view = py3Dmol.view(width=800, height=400)
     view.addModel(atom_data, "xyz")  # XYZ形式のデータを読み込む
     view.setStyle({"stick": {}})  # 棒状モデルで表示
     view.zoomTo()  # ズーム設定
-    view.show()
     return view
 
 # 分子構造の3D表示
 st.header("分子構造の3D表示")
 if st.button("分子構造を表示"):
     try:
-        st.write("**分子構造をレンダリング中...**")
-        view = show_3d_structure(atom_input)
+        formatted_atom_input = validate_and_format_xyz(atom_input)
+        view = show_3d_structure(formatted_atom_input)
         view_html = view.js()  # py3DmolをHTMLに変換
         st.components.v1.html(view_html, height=500, width=800)
+    except ValueError as e:
+        st.error(f"入力エラー: {e}")
     except Exception as e:
         st.error(f"エラーが発生しました: {e}")
 
 # 計算ボタン
-if st.sidebar.button("計算を実行"):
+if st.button("計算を実行"):
     try:
+        formatted_atom_input = validate_and_format_xyz(atom_input)
+
         # 分子の設定
         st.write("**計算を開始します...**")
         mol = gto.Mole()
-        mol.build(atom=atom_input, basis=basis, charge=charge, spin=spin)
+        mol.build(atom=formatted_atom_input, basis="sto-3g", charge=0, spin=0)
 
         # Hartree-Fock計算
         mf = scf.RHF(mol)
@@ -71,5 +85,7 @@ if st.sidebar.button("計算を実行"):
                 file_name=cube_file,
                 mime="application/octet-stream"
             )
+    except ValueError as e:
+        st.error(f"入力エラー: {e}")
     except Exception as e:
         st.error(f"エラーが発生しました: {e}")

@@ -4,3 +4,5 @@ matplotlib
 rdkit
 pyscf[all]
 geometric
+py3Dmol
+stmol
