@@ -1,0 +1,15 @@
+/* config/styles.css */
+
+div.stButton > button:first-child {
+    background-color: #007BFF; /* 明るいブルー */
+    color: white;             /* 白文字 */
+    border: none;             /* ボーダーなし */
+    border-radius: 8px;       /* ボーダーの角丸 */
+    padding: 10px 20px;       /* ボタンの内側余白 */
+    font-size: 16px;          /* フォントサイズ */
+    font-weight: bold;        /* フォントの太さ */
+    cursor: pointer;          /* カーソルをポインタに */
+}
+div.stButton > button:first-child:hover {
+    background-color: #0056b3; /* ホバー時の背景色 */
+}

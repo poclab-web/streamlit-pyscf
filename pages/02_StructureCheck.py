@@ -1,14 +1,16 @@
 """
 入力形式の確認を行うもの
+SMILESやXYZから2次元や3次元の構造を確認する。
+SDF, XYZ, zmatrixへの変換も行う。
 """
-
-
-import streamlit as st
-import stmol
-from logic.molecule_handler import MoleculeHandler
 import os
+import streamlit as st
 
+from rdkit import Chem
+import stmol
 import py3Dmol
+
+from logic.molecule_handler import MoleculeHandler
 
 # Streamlit app
 st.title("Molecule Viewer and Converter")
@@ -39,10 +41,20 @@ elif input_type == "XYZ":
 
 # Display molecule 2D and 3D
 if start_processing and handler and handler.mol:
+    st.subheader("InChIKey")
+    st.code(Chem.MolToInchiKey(handler.mol))
 
     st.subheader("2D Structure")
-    handler.generate_2d_image("molecule_2d.png")
-    st.image("molecule_2d.png", caption="2D Structure")
+    # 化合物名を取得
+    compound_name = Chem.MolToInchiKey(handler.mol)
+    smiles = Chem.MolToSmiles(handler.mol)
+
+    # ディレクトリの作成
+    directory = os.path.join("data", compound_name)
+    os.makedirs(directory, exist_ok=True)
+
+    handler.generate_2d_image(f"{directory}/molecule_2d.png")
+    st.image(f"{directory}/molecule_2d.png", caption=Chem.MolToSmiles(handler.mol))
 
     st.subheader("3D Structure")
     try:

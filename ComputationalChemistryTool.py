@@ -23,6 +23,7 @@ if os.path.exists(pages_directory) and os.path.isdir(pages_directory):
     if sorted_files:
         st.markdown("---")
         st.header("Streamlit Pages")
+        st.markdown("以下のページが、あります。")
         for i, (filename, docstring) in enumerate(sorted_files, start=1): 
             # モジュール名を整形
             clean_name = clean_module_name(filename)
@@ -39,26 +40,27 @@ else:
     st.error(f"ディレクトリ '{pages_directory}' が存在しないか、有効なディレクトリではありません。")
 
 
-# `logic`フォルダの存在確認
+# フォルダパスを固定
 logic_directory = "logic"  # `logic`フォルダのパス
+
+# フォルダの存在確認
 if os.path.exists(logic_directory) and os.path.isdir(logic_directory):
-    module_docstrings = get_module_docstrings(logic_directory)
-    sorted_files = sorted(module_docstrings)
-
-    if sorted_files:
+    # フォルダ内のPythonファイルをリストアップ
+    files = [f for f in os.listdir(logic_directory) if f.endswith('.py')]
+    
+    if files:
         st.markdown("---")
-        st.header("logic Pages")
-        for filename, docstring in sorted_files: 
-            # モジュール名を整形
-            clean_name = clean_module_name(filename)
-            # 各モジュール名を作成
-            st.markdown(f"### {clean_name}")
-
-            # Docstring を折りたたみ可能に表示
-            with st.expander("Docstring を表示"):
-                st.code(docstring, language="python")
-
+        st.header("Logic Pages")
+        st.markdown("以下は、各種コードの中身です。")
+        for file in files:
+            # ファイルの中身を折りたたんで表示
+            with st.expander(f"{file}"):
+                file_path = os.path.join(logic_directory, file)
+                with open(file_path, "r", encoding="utf-8") as f:
+                    file_content = f.read()
+                st.code(file_content, language="python")
     else:
-        st.info("`logic` フォルダには Python モジュールが見つかりませんでした。")
+        st.warning("logicフォルダ内にPythonファイルが見つかりません。")
 else:
-    st.error(f"ディレクトリ '{logic_directory}' が存在しないか、有効なディレクトリではありません。")
+    st.error("logicフォルダが存在しません。")
+

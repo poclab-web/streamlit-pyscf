@@ -1,6 +1,7 @@
 """
 軌道の計算と表示を行うもの
 TODO: 改修中
+計算後のcheck pointを呼び出して行う。
 """
 
 import streamlit as st
@@ -11,7 +12,7 @@ import py3Dmol
 st.title("PySCF CUBEファイル生成と分子構造表示アプリ")
 
 # 分子構造入力
-st.sidebar.header("分子の設定")
+st.header("分子の設定")
 default_atom = '''
 C      0.294808    1.728651    0.000003
 H     -0.501745    1.141642    0.407216
@@ -19,10 +20,10 @@ H      0.143963    1.853765   -1.051896
 H      0.309979    2.687482    0.474676
 H      1.227038    1.231716    0.170017
 '''
-atom_input = st.sidebar.text_area("原子の座標 (XYZ形式)", default_atom, height=150)
-basis = st.sidebar.selectbox("基底関数", ["sto-3g", "6-31g", "cc-pVDZ"], index=0)
-charge = st.sidebar.number_input("分子の電荷", value=0, step=1)
-spin = st.sidebar.number_input("スピン (2S)", value=0, step=1)
+atom_input = st.text_area("原子の座標 (XYZ形式)", default_atom, height=150)
+basis = st.selectbox("基底関数", ["sto-3g", "6-31g", "cc-pVDZ"], index=0)
+charge = st.number_input("分子の電荷", value=0, step=1)
+spin = st.number_input("スピン (2S)", value=0, step=1)
 
 # 3D表示関数
 def show_3d_structure(atom_data):
@@ -46,7 +47,7 @@ if st.button("分子構造を表示"):
         st.error(f"エラーが発生しました: {e}")
 
 # 計算ボタン
-if st.sidebar.button("計算を実行"):
+if st.button("計算を実行"):
     try:
         # 分子の設定
         st.write("**計算を開始します...**")

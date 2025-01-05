@@ -1,6 +1,8 @@
 """
 振動計算とIR計算
-
+構造最適化後のものの確認を行う。
+他のもののcheckpointやXYZを呼び出して、行う。
+TODO: 改修中
 """
 
 import streamlit as st

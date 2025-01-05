@@ -1,19 +1,25 @@
 """
-pySCFの計算を実行する部分
+pySCFの計算を実行して、実行した結果を出力させる部分
+ファイルの入力については、molecule_handler.pyに行わせている。
 1. 1点計算
 2. 構造最適化計算
 3. 振動計算
 4. 励起状態計算（時間依存密度汎関数理論: TD-DFT）
 5. 分子の応答性（極性率や双極子モーメント）
+出てきたファイルの解析については、output_handler.pyで数値の変換し、visualization.pyでグラフなどに変換する。
 """
 
+import os
+from pyscf import gto, scf, dft, solvent
+import json
+from datetime import datetime
+import tempfile
+import sys
 
-from pyscf import gto, scf, dft, hessian
-import numpy as np
+from pyscf.geomopt.berny_solver import optimize
 
 
 # 理論と基底関数の選択肢
-# TODO: 今後のことを考えて、自動取得もしくはファイルを分割したい。
 theory_options = ["HF", "B3LYP", "PBE", "M06-2X", "B97X-D"]
 basis_set_options = [
     "sto-3g", "6-31g", "6-31g*", "6-31+g(d,p)", "cc-pVDZ",
@@ -21,93 +27,272 @@ basis_set_options = [
 ]
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
 
+
+# ログ保存関数（化合物ごとのフォルダに保存）
+def save_log(compound_name, data):
+    """
+    Save calculation data to a JSON log file in the compound-specific folder.
+
+    Parameters:
+        compound_name (str): Name of the compound.
+        data (dict): A dictionary containing calculation parameters and results.
+    """
+    # ディレクトリ作成
+    directory = os.path.join("data", compound_name)
+    os.makedirs(directory, exist_ok=True)
+
+    # ログファイルのパス
+    log_file = os.path.join(directory, "calculation_log.json")
+
+    # JSONデータを保存
+    with open(log_file, 'a') as f:
+        f.write(json.dumps(data, indent=4) + '\n')
+    
+    return directory  # ディレクトリパスを返す
+
+def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, eps=None):
+    """
+    Set up a PySCF molecule with specified parameters.
+
+    Parameters:
+        atom_input (str): Atomic coordinates in XYZ format.
+        basis_set (str): Basis set for the calculation.
+        charge (int): Molecular charge.
+        spin (int): Spin multiplicity (2S + 1).
+        solvent_model (str): Solvent model to be used (e.g., PCM).
+        eps (float): Dielectric constant for solvent.
+
+    Returns:
+        gto.Mole: A PySCF molecule object.
+    """
+    mol = gto.M(atom=atom_input, basis=basis_set, charge=charge, spin=spin)
+    
+    if solvent_model == "PCM":
+        pcm = solvent.PCM(mol)
+        if eps is not None:
+            pcm.eps = eps
+        mol = pcm
+
+    return mol
+
 # 1. 1点計算
-def run_quantum_calculation(atom_input, basis_set, theory):
+def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None):
     """
     Execute a quantum chemistry calculation.
 
     Parameters:
+        compound_name (str): Name of the compound.
         atom_input (str): Atomic coordinates in XYZ format.
         basis_set (str): Basis set for the calculation.
         theory (str): Theory to be used for the calculation (HF, DFT, MP2, etc.).
+        charge (int): Molecular charge.
+        spin (int): Spin multiplicity (2S + 1).
+        solvent_model (str): Solvent model to be used (e.g., PCM).
+        eps (float): Dielectric constant for solvent.
 
     Returns:
         float: The calculated energy.
     """
+    log_entry = {
+        "time": "Start_Time",
+        "timestamp": datetime.now().isoformat(),
+        "compound": compound_name,
+        "smiles": smiles,
+        "calculation_type": "single_point",
+        "parameters": {
+            "atom_input": atom_input,
+            "basis_set": basis_set,
+            "theory": theory,
+            "charge": charge,
+            "spin": spin,
+            "solvent_model": solvent_model,
+            "dielectric": eps
+        }
+    }
     try:
-        # 分子のセットアップ
-        mol = gto.M(atom=atom_input, basis=basis_set)
-        
-        # 理論に応じて計算を実行
-        if theory == "HF":
-            mf = scf.RHF(mol)
-        elif theory == "MP2":
-            mf = scf.RHF(mol).run()
-            from pyscf import mp
-            mf = mp.MP2(mf).run()
-        elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
-            mf = dft.RKS(mol)
-            mf.xc = theory
-        else:
-            raise ValueError(f"Unsupported theory: {theory}")
-        
-        energy = mf.kernel()
+        directory = save_log(compound_name, log_entry)
+        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps)
+
+        chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
+
+        with open(os.path.join(directory, f"output_{theory}.out"), 'w') as f:
+            if theory == "HF":
+                mf = scf.RHF(mol)
+            elif theory == "MP2":
+                mf = scf.RHF(mol).run()
+                from pyscf import mp
+                mf = mp.MP2(mf).run()
+            elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+                mf = dft.RKS(mol)
+                mf.xc = theory
+            else:
+                raise ValueError(f"Unsupported theory: {theory}")
+
+            mf.chkfile = chkfile_name
+            mf.verbose = 4
+            mf.stdout = f
+
+            energy = mf.kernel()
+            log_entry["time"] = "End_Time"
+            log_entry["result"] = {
+                "energy": energy,
+                "converged": mf.converged,
+                "chkfile": os.path.abspath(chkfile_name)
+            }
+            save_log(compound_name, log_entry)
+
         return energy
     except Exception as e:
+        log_entry["time"] = "Error_End"
+        log_entry["error"] = str(e)
+        save_log(compound_name, log_entry)
         raise RuntimeError(f"Calculation failed: {e}")
 
 
 # 2. 構造最適化計算
-def run_geometry_optimization(atom_input, basis_set, theory, conv_params):
+
+def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, conv_params=None):
     """
-    Perform geometry optimization for a molecule using PySCF and geometric.
+    Perform geometry optimization for a molecule using PySCF's native optimizer.
 
     Parameters:
+        compound_name (str): Name of the compound.
         atom_input (str): Atomic coordinates in XYZ format.
         basis_set (str): Basis set for the calculation.
         theory (str): Theory to be used for the calculation (HF, DFT, etc.).
-        conv_params (dict): Convergence parameters for optimization.
+        charge (int): Molecular charge.
+        spin (int): Spin multiplicity (2S + 1).
+        solvent_model (str): Solvent model to be used (e.g., PCM).
+        eps (float): Dielectric constant for solvent.
+        conv_params (dict, optional): Convergence parameters for optimization.
 
     Returns:
-        list: Energies during optimization.
-        list: Geometries during optimization (list of numpy arrays).
+        list: Final optimized geometry (list of numpy arrays).
     """
+    log_entry = {
+        "time": "Start_Time",
+        "timestamp": datetime.now().isoformat(),
+        "compound": compound_name,
+        "smiles": smiles,
+        "calculation_type": "geometry_optimization",
+        "parameters": {
+            "atom_input": atom_input,
+            "basis_set": basis_set,
+            "theory": theory,
+            "charge": charge,
+            "spin": spin,
+            "solvent_model": solvent_model,
+            "dielectric": eps,
+            "conv_params": conv_params
+        }
+    }
     try:
-        # 分子のセットアップ
-        mol = gto.M(atom=atom_input, basis=basis_set)
+        directory = save_log(compound_name, log_entry)
+        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps)
 
-        # 理論の設定
-        if theory == "HF":
-            mf = scf.RHF(mol)
-        elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
-            mf = dft.RKS(mol)
-            mf.xc = theory
-        else:
-            raise ValueError(f"Unsupported theory: {theory}")
+        chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
 
-        # エネルギーとジオメトリを記録するためのリスト
-        energies = []
-        geometries = []
+        with open(os.path.join(directory, f"output_{theory}.txt"), 'w') as f:
+            if theory == "HF":
+                mf = scf.RHF(mol)
+            elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+                mf = dft.RKS(mol)
+                mf.xc = theory
+            else:
+                raise ValueError(f"Unsupported theory: {theory}")
 
-        # コールバック関数
-        def callback(update):
-            """
-            Callback function to capture optimization steps.
+            mf.chkfile = chkfile_name
+            mf.kernel()
 
-            Parameters:
-                update (dict): A dictionary containing geometry and energy information.
-            """
-            if "coords" in update and "energy" in update:
-                geometries.append(update["coords"])
-                energies.append(update["energy"])
+            options = conv_params if conv_params else {}
+            optimized_mol = optimize(mf, solver='geomeTRIC', options=options)
 
-        # 構造最適化を実行
-        geometric_solver.optimize(mf, callback=callback, **conv_params)
+            final_geometry = optimized_mol.atom_coords()
+            log_entry["time"] = "End_Time"
+            log_entry["result"] = {"final_geometry": final_geometry.tolist()}
+            save_log(compound_name, log_entry)
 
-        return energies, geometries
-    
+        return final_geometry
+
     except Exception as e:
+        log_entry["time"] = "Error_End"
+        log_entry["error"] = str(e)
+        save_log(compound_name, log_entry)
         raise RuntimeError(f"Optimization failed: {e}")
+
+
+# def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theory, conv_params=None):
+#     """
+#     Perform geometry optimization for a molecule using PySCF's native optimizer.
+
+#     Parameters:
+#         compound_name (str): Name of the compound.
+#         atom_input (str): Atomic coordinates in XYZ format.
+#         basis_set (str): Basis set for the calculation.
+#         theory (str): Theory to be used for the calculation (HF, DFT, etc.).
+#         conv_params (dict, optional): Convergence parameters for optimization.
+
+#     Returns:
+#         list: Final optimized geometry (list of numpy arrays).
+#     """
+#     log_entry = {
+#         "time": "Start_Time",
+#         "timestamp": datetime.now().isoformat(),
+#         "compound": compound_name,
+#         "smiles": smiles,
+#         "calculation_type": "geometry_optimization",
+#         "parameters": {
+#             "atom_input": atom_input,
+#             "basis_set": basis_set,
+#             "theory": theory,
+#             "conv_params": conv_params
+#         }
+#     }
+#     try:
+#         # ログファイルとチェックポイント保存用ディレクトリを作成
+#         directory = save_log(compound_name, log_entry)
+
+#         with open(os.path.join(directory, f"output_{theory}.txt"), 'w') as f:
+
+#             # 分子のセットアップ
+#             mol = gto.M(atom=atom_input, basis=basis_set)
+
+#             # チェックポイントファイルのパスを作成
+#             chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
+
+#             # 理論の設定
+#             if theory == "HF":
+#                 mf = scf.RHF(mol)
+#                 mf.chkfile = chkfile_name  # チェックポイントファイルを設定
+#             elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+#                 mf = dft.RKS(mol)
+#                 mf.xc = theory
+#                 mf.chkfile = chkfile_name  # チェックポイントファイルを設定
+#             else:
+#                 raise ValueError(f"Unsupported theory: {theory}")
+
+#             # SCFを実行して初期エネルギーを計算
+#             mf.kernel()
+
+#             # 収束条件をgeomeTRIC用に設定
+#             options = conv_params if conv_params else {}
+
+#             # 構造最適化の実行（geomeTRICを使用）
+#             optimized_mol = optimize(mf, solver='geomeTRIC', options=options)
+
+#             # 最適化後の座標
+#             final_geometry = optimized_mol.atom_coords()
+#             log_entry["time"] = "End_Time"
+#             log_entry["result"] = {"final_geometry": final_geometry.tolist()}
+#             save_log(compound_name, log_entry)
+
+#         return final_geometry
+
+#     except Exception as e:
+#         log_entry["time"] = "Error_End"
+#         log_entry["error"] = str(e)
+#         save_log(compound_name, log_entry)
+#         raise RuntimeError(f"Optimization failed: {e}")
 
 
 # 3. 振動計算

@@ -52,7 +52,7 @@ if st.button("予測する"):
         # PySCFの分子オブジェクトを生成
         st.text("PySCF用の入力ファイルを生成中...")
         mol = gto.M(
-            atom=xyz_trimmed,           # 原子データ
+            atom=xyz_trimmed,     # 原子データ
             unit="Angstrom",      # 座標単位
             basis="6-31G",        # 基底関数
         )

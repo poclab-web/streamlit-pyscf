@@ -1,10 +1,11 @@
 """
 pySCFの計算を実行するための入力フォーマットに変更する部分
+入力は、smilesとXYZに対応
+出力は、2次元画像、3次元、zmatrixやpyscfのinput形式などに変換する。
 """
 
-
 from rdkit import Chem
-from rdkit.Chem import AllChem, Draw
+from rdkit.Chem import AllChem, Draw, rdDetermineBonds
 from rdkit.Chem.rdmolfiles import MolFromXYZFile
 from rdkit.Geometry import Point3D
 
@@ -33,7 +34,7 @@ class MoleculeHandler:
             lines = xyz.strip().split("\n")
             atoms = []
             coords = []
-            
+
             for line in lines:
                 parts = line.split()
                 if len(parts) != 4:
@@ -47,10 +48,8 @@ class MoleculeHandler:
             mol = Chem.RWMol()
 
             # Add atoms
-            atom_indices = []
             for atom in atoms:
-                a = Chem.Atom(atom)
-                atom_indices.append(mol.AddAtom(a))
+                mol.AddAtom(Chem.Atom(atom))
 
             # Set 3D coordinates
             conf = Chem.Conformer(len(atoms))
@@ -58,8 +57,8 @@ class MoleculeHandler:
                 conf.SetAtomPosition(i, coord)
             mol.AddConformer(conf)
 
-            # Attempt to determine bonds
-            Chem.rdDetermineBonds.DetermineBonds(mol)
+            # Use DetermineBonds to infer bonds
+            rdDetermineBonds.DetermineBonds(mol)
 
             # Add hydrogens
             mol = Chem.AddHs(mol)
@@ -68,7 +67,7 @@ class MoleculeHandler:
         except Exception as e:
             print(f"Error loading XYZ data: {e}")
             return None
-
+        
     def generate_2d_image(self, output_path="molecule_2d.png"):
         if not self.mol:
             raise ValueError("Molecule is not initialized.")
@@ -131,3 +130,5 @@ class MoleculeHandler:
             pyscf_atoms.append(f"{atom.GetSymbol()} {pos.x:.8f} {pos.y:.8f} {pos.z:.8f}")
 
         return "\n".join(pyscf_atoms)
+    
+

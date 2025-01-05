@@ -11,68 +11,154 @@ PySCFを使用して分子の幾何最適化を実行する
 - 最終的な最適化構造を表示し、必要に応じてすべての構造をXYZファイルとして保存可能。
 """
 
+import os
+
 import streamlit as st
-import matplotlib.pyplot as plt
+import pandas as pd
+from rdkit import Chem
+import py3Dmol
+import stmol
 
-from logic.calculation import theory_options, basis_set_options
-from logic.calculation import run_geometry_optimization
+from utils.module import load_css
+from logic.molecule_handler import MoleculeHandler
+from logic.calculation import theory_options, basis_set_options, run_geometry_optimization
 
-st.title("PySCF + Streamlit: Geometry Optimization")
+# カスタムCSSを適用
+load_css("config/styles.css")
 
-# サイドバーの入力
+# 本文
+st.title("Geometry Optimization")
+
+# ユーザー入力
 st.header("Molecular Input")
-atom_input = st.text_area("Atoms (XYZ format)", "H 0 0 0\nH 0 0 0.74")
-basis_set = st.selectbox("Basis Set", basis_set_options)
+input_type = st.selectbox("Select Input Type", ["XYZ", "SMILES"])
+atom_input = st.text_area(
+    "Enter Molecular Structure",
+    "C     -2.385271    1.648249    0.000003\nH     -3.181824    1.061240    0.407216\nH     -2.536116    1.773363   -1.051896\nH     -2.370100    2.607079    0.474676\nO     -1.453042    1.151314    0.170017\nH     -1.466511    0.300016   -0.251422"
+    if input_type == "XYZ"
+    else "CO",
+)
 theory = st.selectbox("Theory", theory_options)
+basis_set = st.selectbox("Basis Set", basis_set_options)
 
+# Charge and Spin入力セクション
+with st.expander("Other Settings"):
+    charge = st.number_input("Molecular Charge", min_value=-10, max_value=10, value=0, step=1)
+    multiplicity = st.number_input("Spin Multiplicity (2S + 1)", min_value=1, max_value=10, value=1, step=1)
+    # スピン計算
+    spin = multiplicity - 1
+
+    # 溶媒効果の設定
+    solvent_model = st.selectbox("Select Solvent Model", ["None", "PCM"])
+    eps = None  # epsのデフォルト値を設定
+
+    solvents_file = "config/solvents_epsilon.csv"
+    solvents_data = pd.read_csv(solvents_file)
+
+    if solvent_model == "PCM":
+        solvent_selection = st.selectbox(
+            "Select a solvent",
+            [f"{row['Solvent']} (ε={row['Epsilon']})" for _, row in solvents_data.iterrows()]
+        )
+        if solvent_selection:
+            eps = float(solvent_selection.split("=", 1)[-1][:-1])
+
+        eps_input = st.selectbox("Override epsilon value?", ["No", "Yes"])
+        if eps_input == "Yes":
+            eps = st.number_input("Dielectric Constant (ε)", min_value=1.0, max_value=100.0, value=eps)
 
 # 収束条件の入力
-st.header("Convergence Parameters")
-gradient_tol = st.number_input("Gradient Tolerance (a.u.)", min_value=1e-6, value=1e-4, step=1e-6, format="%.6f")
-step_tol = st.number_input("Step Tolerance (a.u.)", min_value=1e-6, value=1e-4, step=1e-6, format="%.6f")
-energy_tol = st.number_input("Energy Tolerance (Hartree)", min_value=1e-6, value=1e-6, step=1e-6, format="%.6f")
-max_iterations = st.number_input("Max Iterations", min_value=1, value=100, step=1)
+with st.expander("Convergence Parameters"):
+    convergence_energy = st.number_input(
+        "Energy Tolerance (Hartree)", 
+        min_value=1e-7, value=1e-6, step=1e-7, format="%.7f"
+    )
+    convergence_grms = st.number_input(
+        "Gradient RMS Tolerance (Eh/Bohr)", 
+        min_value=1e-5, value=3e-4, step=1e-5, format="%.5f"
+    )
+    convergence_gmax = st.number_input(
+        "Gradient Max Tolerance (Eh/Bohr)", 
+        min_value=1e-5, value=4.5e-4, step=1e-5, format="%.5f"
+    )
+    convergence_drms = st.number_input(
+        "Displacement RMS Tolerance (Angstrom)", 
+        min_value=1e-4, value=1.2e-3, step=1e-4, format="%.4f"
+    )
+    convergence_dmax = st.number_input(
+        "Displacement Max Tolerance (Angstrom)", 
+        min_value=1e-4, value=1.8e-3, step=1e-4, format="%.4f"
+    )
+    max_iterations = st.number_input(
+        "Max Iterations", 
+        min_value=1, value=100, step=1
+    )
 
-# 収束条件の辞書を作成
 conv_params = {
-    "gradient_tolerance": gradient_tol,
-    "step_tolerance": step_tol,
-    "energy_tolerance": energy_tol,
-    "max_iterations": max_iterations,
+    "convergence_energy": convergence_energy,
+    "convergence_grms": convergence_grms,
+    "convergence_gmax": convergence_gmax,
+    "convergence_drms": convergence_drms,
+    "convergence_dmax": convergence_dmax,
+    "max_steps": max_iterations,
 }
 
-# 計算実行ボタン
+# 最適化の実行
 if st.button("Run Geometry Optimization"):
     try:
+        # 分子を処理
+        handler = MoleculeHandler(atom_input, input_type=input_type.lower())
+        if not handler.mol:
+            raise ValueError("Invalid molecular input. Please check your format.")
+
+        # 化合物名を取得
+        compound_name = Chem.MolToInchiKey(handler.mol)
+        smiles = Chem.MolToSmiles(handler.mol)
+
+        # ディレクトリの作成
+        directory = os.path.join("data", compound_name)
+        os.makedirs(directory, exist_ok=True)
+
+        # 2D構造の生成
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("Input 2D Structure")
+            handler.generate_2d_image(f"{directory}/molecule_2d.png")
+            st.image(f"{directory}/molecule_2d.png", caption=Chem.MolToSmiles(handler.mol))
+
+        # 3D構造の生成
+        with col2:
+            st.subheader("Input 3D Structure")
+            try:
+                mol_block = handler.generate_3d_molblock()
+                viewer = py3Dmol.view(width=400, height=400)  # Adjust width to fit in the column
+                viewer.addModel(mol_block, "mol")
+                viewer.setStyle({"stick": {}})
+                viewer.zoomTo()
+                stmol.showmol(viewer, height=400)
+            except Exception as e:
+                st.warning(f"Unable to generate 3D structure: {e}")
+
+        # PySCF用入力データを作成
+        pyscf_input = handler.to_pyscf_input()
+
+        # 最適化の実行
         st.write("Running geometry optimization...")
-        energies, geometries = run_geometry_optimization(atom_input, basis_set, theory, conv_params)
+        final_geometry = run_geometry_optimization(
+            compound_name, smiles, pyscf_input, basis_set, theory, 
+            charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, conv_params=conv_params
+        )
 
-        # エネルギー収束のプロット
-        st.write("### Energy Convergence")
-        plt.figure(figsize=(10, 5))
-        plt.plot(energies, marker='o')
-        plt.title('Energy Convergence During Geometry Optimization')
-        plt.xlabel('Optimization Step')
-        plt.ylabel('Total Energy (Hartree)')
-        plt.grid(True)
-        st.pyplot(plt)
-
-        # 最終構造の表示
+        # 最適化後の構造を表示
         st.write("### Final Optimized Geometry")
-        st.text(f"Final Energy: {energies[-1]:.6f} Hartree")
-        for coord, symbol in zip(geometries[-1], atom_input.split("\n")):
-            st.text(f"{symbol.split()[0]}: {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}")
+        for i, coord in enumerate(final_geometry):
+            st.text(f"Atom {i + 1}: {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}")
 
-        # 全ての構造を保存するオプション
-        if st.checkbox("Save All Geometries"):
-            for i, coords in enumerate(geometries):
-                filename = f"geometry_step_{i+1}.xyz"
-                with open(filename, 'w') as f:
-                    f.write(f"{len(atom_input.splitlines())}\n")
-                    f.write(f"Step {i+1} Energy: {energies[i]}\n")
-                    for coord, symbol in zip(coords, atom_input.split("\n")):
-                        f.write(f"{symbol.split()[0]} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}\n")
-            st.success("All geometries have been saved as XYZ files.")
+        save_path = os.path.join(directory, "optimized_geometry.xyz")
+        with open(save_path, 'w') as f:
+            f.write(f"{len(final_geometry)}\nOptimized structure\n")
+            for i, coord in enumerate(final_geometry):
+                f.write(f"Atom {i + 1} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}\n")
+        st.success(f"Optimized geometry has been saved to: {save_path}")
     except Exception as e:
-        st.error(f"Error: {e}")
-
+        st.error(f"Error during optimization: {e}")

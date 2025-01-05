@@ -2,6 +2,12 @@ import os
 import ast
 import streamlit as st
 
+
+# 外部CSSファイルの読み込み
+def load_css(file_path):
+    with open(file_path, "r") as css_file:
+        st.markdown(f"<style>{css_file.read()}</style>", unsafe_allow_html=True)
+
 def load_readme(file_path="README.md"):
     with open(file_path, "r", encoding="utf-8") as file:
         return file.read()
