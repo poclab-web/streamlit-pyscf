@@ -6,3 +6,4 @@ pyscf[all]
 geometric
 py3Dmol
 stmol
+ipython_genutils
