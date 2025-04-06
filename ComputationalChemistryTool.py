@@ -18,6 +18,13 @@ st.markdown(readme_content, unsafe_allow_html=True)
 pages_directory = "pages"  # `pages`フォルダのパス
 if os.path.exists(pages_directory) and os.path.isdir(pages_directory):
     module_docstrings = get_module_docstrings(pages_directory)
+        # __init__.py を除外
+    # __init__.py を除外（リスト形式）
+    module_docstrings = [
+        (filename, docstring)
+        for filename, docstring in module_docstrings
+        if filename != '__init__.py'
+    ]
     sorted_files = sorted(module_docstrings)
 
     if sorted_files:
@@ -46,7 +53,7 @@ logic_directory = "logic"  # `logic`フォルダのパス
 # フォルダの存在確認
 if os.path.exists(logic_directory) and os.path.isdir(logic_directory):
     # フォルダ内のPythonファイルをリストアップ
-    files = [f for f in os.listdir(logic_directory) if f.endswith('.py')]
+    files = [f for f in os.listdir(logic_directory) if f.endswith('.py') and f != '__init__.py']
     
     if files:
         st.markdown("---")

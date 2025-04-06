@@ -1,27 +1,23 @@
 # streamlit-pyscf
-StreamlitとPySCFを使って、高度な量子化学計算を誰にでもできるようにするものである。
+StreamlitとPySCFを使って、高度な量子化学計算を誰にでもできるようにするものです。
 
-PySCF（Python-based Simulations of Chemistry Framework）は、高度な量子化学計算を行うためのライブラリである。
+PySCF（Python-based Simulations of Chemistry Framework）は、高度な量子化学計算を行うためのライブラリです。
 
-
+インストール不要のアプリも公開していますが、ローカルのパソコンで動かすことを推奨いたします。
 
 https://conputational-chemistry-tool.streamlit.app/
 
 
 ## Installation
-インストール方法を、あとで書く。
-VSCodeとAnacondaで簡単にできるようにする。
+インストール方法を、後日書く予定です。
+VSCodeとAnacondaをインストールすれば、簡単にできるよう致します。
 
 ## Usage
+ローカルのパソコンにインストールできたら、ターミナルのところで、
 
-ターミナルのところに、
 `streamlit run ComputationalChemistryTool.py`
 
-使い方をあとで書く。
-基本的な使い方例。
-実行コマンドやサンプルコード。
-
-それぞれのプログラムの
+と実行してください。
 
 ## Contributing
 1. Forkしてください。
@@ -31,9 +27,10 @@ VSCodeとAnacondaで簡単にできるようにする。
 5. Pull Requestを作成。
 
 ## Issues
+そのほか、問題点については、以下に投稿してください。
 
 https://github.com/poclab-web/streamlit-pyscf/issues
 
 ## License
 
-あとで、多分書く。
+多分、あとで書きます。
