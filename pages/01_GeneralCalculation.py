@@ -2,7 +2,16 @@
 一般的な、計算について、行うもの
 """
 
-# 計算済みのファイルを検索
+import streamlit as st
+
+
+st.warning('作成中', icon="⚠️")
+
+# Streamlit app
+st.title("General Calculation")
+
+
+# 計算済みのファイルを検索もしくは、構造の入力
 
 
 # 配座探索
