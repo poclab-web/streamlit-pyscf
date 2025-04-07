@@ -2,7 +2,7 @@ streamlit
 watchdog
 matplotlib
 rdkit
-pyscf[all]
+pyscf
 geometric
 py3Dmol
 stmol
