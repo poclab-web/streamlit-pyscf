@@ -4,6 +4,7 @@ matplotlib
 rdkit
 pyscf
 geometric
+pyberny
 py3Dmol
 stmol
 ipython_genutils
