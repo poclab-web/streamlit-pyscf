@@ -6,5 +6,6 @@ pyscf
 geometric
 pyberny
 py3Dmol
+pyberny
 stmol
 ipython_genutils

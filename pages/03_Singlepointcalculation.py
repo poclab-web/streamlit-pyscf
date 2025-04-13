@@ -47,6 +47,10 @@ with st.expander("Other Settings"):
   solvent_model = st.selectbox("Select Solvent Model", ["None", "PCM"])
   eps = None  # epsのデフォルト値を設定
 
+  # symmetryの選択肢を追加
+  symmetry = st.selectbox("Consider Molecular Symmetry?", ["Yes", "No"])
+  symmetry = True if symmetry == "Yes" else False
+
   # Load solvent data
   solvents_file = "config/solvents_epsilon.csv"
   solvents_data = pd.read_csv(solvents_file)
@@ -117,7 +121,7 @@ if st.button("Run Single Point Calculation"):
 
         st.write("Running quantum chemistry calculation...")
         energy = run_quantum_calculation(
-            compound_name, smiles, pyscf_input, basis_set, theory, charge=charge, spin=spin, solvent_model=solvent_model, eps=eps
+            compound_name, smiles, pyscf_input, basis_set, theory, charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, symmetry=symmetry
         )
         
         # 計算結果を表示
