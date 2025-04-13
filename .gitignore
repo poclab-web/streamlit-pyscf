@@ -173,3 +173,10 @@ cython_debug/
 # data 
 data
 .DS_Store
+
+# local calculation data
+.sdf
+.xyz
+.zmatrix
+.cube
+.molden
