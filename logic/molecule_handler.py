@@ -17,16 +17,15 @@ class MoleculeHandler:
             if self.mol:
                 AllChem.Compute2DCoords(self.mol)
                 self.mol = Chem.AddHs(self.mol)  # Add hydrogens to the molecule
+                AllChem.EmbedMolecule(self.mol)
+                AllChem.UFFOptimizeMolecule(self.mol)  # Optimize the molecule
         elif input_type.lower() == "xyz":
             self.mol = self._load_from_xyz(input_data)
+            # No embedding or optimization for XYZ input
         elif input_type.lower() == "z-matrix":
             raise NotImplementedError("Z-Matrix parsing is not supported natively by RDKit.")
         else:
             raise ValueError("Unsupported input type. Use 'smiles', 'xyz', or 'z-matrix'.")
-
-        if self.mol:
-            AllChem.EmbedMolecule(self.mol)
-            AllChem.UFFOptimizeMolecule(self.mol)
 
     def _load_from_xyz(self, xyz):
         try:
@@ -130,5 +129,5 @@ class MoleculeHandler:
             pyscf_atoms.append(f"{atom.GetSymbol()} {pos.x:.8f} {pos.y:.8f} {pos.z:.8f}")
 
         return "\n".join(pyscf_atoms)
-    
+
 
