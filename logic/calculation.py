@@ -144,11 +144,10 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                 "chkfile": os.path.abspath(chkfile_name)
             }
             
-            tools.molden.from_scf(mf, molden_file_name)
+            # molden.dump_scfを使用してエネルギー情報を含む出力を保存
+            tools.molden.dump_scf(mf, molden_file_name)
 
             save_log(compound_name, log_entry)
-
-
 
         return energy
     except Exception as e:
