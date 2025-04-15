@@ -10,7 +10,7 @@ pySCFの計算を実行して、実行した結果を出力させる部分
 """
 
 import os
-from pyscf import gto, scf, dft, solvent
+from pyscf import gto, scf, dft, solvent, tools
 import json
 from datetime import datetime
 import tempfile
@@ -50,7 +50,7 @@ def save_log(compound_name, data):
     
     return directory  # ディレクトリパスを返す
 
-def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, eps=None):
+def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
     """
     Set up a PySCF molecule with specified parameters.
 
@@ -61,11 +61,12 @@ def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, 
         spin (int): Spin multiplicity (2S + 1).
         solvent_model (str): Solvent model to be used (e.g., PCM).
         eps (float): Dielectric constant for solvent.
+        symmetry (bool): Whether to consider molecular symmetry.
 
     Returns:
         gto.Mole: A PySCF molecule object.
     """
-    mol = gto.M(atom=atom_input, basis=basis_set, charge=charge, spin=spin)
+    mol = gto.M(atom=atom_input, basis=basis_set, charge=charge, spin=spin, symmetry=symmetry)
     
     if solvent_model == "PCM":
         pcm = solvent.PCM(mol)
@@ -76,7 +77,7 @@ def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, 
     return mol
 
 # 1. 1点計算
-def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None):
+def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
     """
     Execute a quantum chemistry calculation.
 
@@ -89,6 +90,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
         spin (int): Spin multiplicity (2S + 1).
         solvent_model (str): Solvent model to be used (e.g., PCM).
         eps (float): Dielectric constant for solvent.
+        symmetry (bool): Whether to consider molecular symmetry.
 
     Returns:
         float: The calculated energy.
@@ -106,14 +108,16 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
             "charge": charge,
             "spin": spin,
             "solvent_model": solvent_model,
-            "dielectric": eps
+            "dielectric": eps,
+            "symmetry": symmetry
         }
     }
     try:
         directory = save_log(compound_name, log_entry)
-        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps)
+        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
 
         chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
+        molden_file_name = os.path.join(directory, f"{compound_name}_{theory}.molden")
 
         with open(os.path.join(directory, f"output_{theory}.out"), 'w') as f:
             if theory == "HF":
@@ -139,6 +143,10 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                 "converged": mf.converged,
                 "chkfile": os.path.abspath(chkfile_name)
             }
+            
+            # molden.dump_scfを使用してエネルギー情報を含む出力を保存
+            tools.molden.dump_scf(mf, molden_file_name)
+
             save_log(compound_name, log_entry)
 
         return energy
