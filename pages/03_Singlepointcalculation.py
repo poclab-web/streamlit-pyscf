@@ -13,11 +13,13 @@ import pandas as pd
 from rdkit import Chem
 import py3Dmol
 import os
+import numpy as np
 
 from utils.module import load_css
 from logic.molecule_handler import MoleculeHandler
 from logic.calculation import theory_options, basis_set_options
 from logic.calculation import run_quantum_calculation
+from logic.output_handler import extract_orbital_energies
 
 # カスタムCSSを適用
 load_css("config/styles.css")
@@ -127,5 +129,50 @@ if st.button("Run Single Point Calculation"):
         # 計算結果を表示
         st.success(f"Calculated SinglePoint Energy: {energy} Hartree")
         st.info(f"Results saved in: {directory}")
+
+        # 軌道エネルギーとHOMO/LUMOを表示
+        molden_file_path = os.path.join(directory, f"{compound_name}_{theory}.molden")
+        if os.path.exists(molden_file_path):
+            orbital_data = extract_orbital_energies(molden_file_path)
+
+            # データの検証
+            if not orbital_data or "orbital_energies" not in orbital_data:
+                st.error("Failed to extract orbital energies. Please check the MOLDEN file.")
+                raise ValueError("Invalid orbital data.")
+
+            homo_index = orbital_data.get("homo_index")
+            lumo_index = orbital_data.get("lumo_index")
+
+            if homo_index is None or lumo_index is None:
+                st.error("HOMO or LUMO index could not be determined. Please check the orbital data.")
+                raise ValueError("HOMO or LUMO index is missing.")
+
+            # 軌道エネルギーをデータフレームに変換し、エネルギーでソート
+            orbital_df = pd.DataFrame({
+                "Orbital": [f"Orbital {i + 1}" for i in range(len(orbital_data["orbital_energies"]))],
+                "Energy (Hartree)": orbital_data["orbital_energies"]
+            }).sort_values(by="Energy (Hartree)", ascending=False).reset_index()
+
+            # 軌道エネルギーを表示（Energy (Hartree) のみ）
+            st.subheader("Orbital Energies")
+            st.dataframe(orbital_df[["Energy (Hartree)"]])  # 必要な列だけを表示
+
+            # ソート後のHOMOとLUMOのインデックスを再計算
+            sorted_homo_index = orbital_df[orbital_df["index"] == homo_index].index[0]
+            sorted_lumo_index = orbital_df[orbital_df["index"] == lumo_index].index[0] if lumo_index is not None else None
+
+            # HOMOとLUMOの情報を表示
+            st.subheader("HOMO and LUMO")
+            if sorted_lumo_index is not None:
+                st.write(f"LUMO: Index {sorted_lumo_index + 1}, Energy {orbital_df.loc[sorted_lumo_index, 'Energy (Hartree)']:.6f} Hartree")
+            else:
+                st.write("LUMO: Not found")
+            if sorted_homo_index is not None:
+                st.write(f"HOMO: Index {sorted_homo_index + 1}, Energy {orbital_df.loc[sorted_homo_index, 'Energy (Hartree)']:.6f} Hartree")
+            else:
+                st.write("HOMO: Not found")
+
+        else:
+            st.warning("MOLDEN file not found. Orbital energies cannot be displayed.")
     except Exception as e:
         st.error(f"Error: {e}")
