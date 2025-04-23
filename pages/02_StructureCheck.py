@@ -75,48 +75,16 @@ if st.button("Run Check Structure"):
         st.subheader("InChIKey")
         st.code(Chem.MolToInchiKey(handler.mol))
 
-        # SDF display and download
-        sdf_file_path = "output.sdf"
-        handler.save_to_sdf(sdf_file_path)
-        with open(sdf_file_path, "r") as f:
-            sdf_content = f.read()
+        # SDF display 
         st.subheader("SDF Content")
         st.text_area("SDF Content", value=sdf_content, height=300)
-        with open(sdf_file_path, "rb") as f:
-            st.download_button(
-                label="Download SDF File",
-                data=f,
-                file_name="molecule.sdf",
-                mime="chemical/x-mdl-sdfile"
-            )
 
-        # XYZ display and download
-        xyz_file_path = "output.xyz"
-        handler.save_to_xyz(xyz_file_path)
-        with open(xyz_file_path, "r") as f:
-            xyz_content = f.read()
+        # XYZ display 
         st.subheader("XYZ Content")
         st.text_area("XYZ Content", value=xyz_content, height=300)
-        with open(xyz_file_path, "rb") as f:
-            st.download_button(
-                label="Download XYZ File",
-                data=f,
-                file_name="molecule.xyz",
-                mime="chemical/x-xyz"
-            )
 
-        # Z-Matrix display and download
-        zmatrix_file_path = "output.zmatrix"
-        handler.save_to_zmatrix(zmatrix_file_path)
-        with open(zmatrix_file_path, "r") as f:
-            zmatrix_content = f.read()
+        # Z-Matrix display 
         st.subheader("Z-Matrix Content")
         st.text_area("Z-Matrix Content", value=zmatrix_content, height=300)
-        with open(zmatrix_file_path, "rb") as f:
-            st.download_button(
-                label="Download Z-Matrix File",
-                data=f,
-                file_name="molecule.zmatrix",
-                mime="text/plain"
-            )
+
 

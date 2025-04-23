@@ -15,9 +15,12 @@ import json
 from datetime import datetime
 import tempfile
 import sys
+import re
 
 from pyscf.geomopt.berny_solver import optimize
 
+# 現在の日時を取得してフォーマット
+current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # 理論と基底関数の選択肢
 theory_options = ["HF", "B3LYP", "PBE", "M06-2X", "B97X-D"]
@@ -26,7 +29,6 @@ basis_set_options = [
     "cc-pVTZ", "aug-cc-pVDZ", "aug-cc-pVTZ", "def2-SVP", "def2-TZVP"
 ]
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
-
 
 # ログ保存関数（化合物ごとのフォルダに保存）
 def save_log(compound_name, data):
@@ -44,11 +46,53 @@ def save_log(compound_name, data):
     # ログファイルのパス
     log_file = os.path.join(directory, "calculation_log.json")
 
-    # JSONデータを保存
-    with open(log_file, 'a') as f:
-        f.write(json.dumps(data, indent=4) + '\n')
-    
+    # JSONデータを配列形式で保存
+    if os.path.exists(log_file):
+        # 既存のデータを読み込む
+        with open(log_file, 'r') as f:
+            try:
+                existing_data = json.load(f)
+            except json.JSONDecodeError:
+                existing_data = []
+    else:
+        existing_data = []
+
+    # 新しいデータを追加
+    existing_data.append(data)
+
+    # ファイルに書き込む
+    with open(log_file, 'w') as f:
+        json.dump(existing_data, f, indent=4)
+
     return directory  # ディレクトリパスを返す
+
+def get_sequential_filename(directory, theory, basis_set, extension="molden"):
+    """
+    Generate a sequential filename to avoid overwriting existing files.
+
+    Parameters:
+        directory (str): Directory where the file will be saved.
+        theory (str): Theory name to include in the filename.
+        basis_set (str): Basis set name to include in the filename.
+        extension (str): File extension (default: "molden").
+
+    Returns:
+        str: A unique filename with a sequential number.
+    """
+    # ディレクトリ内の既存ファイルを取得
+    existing_files = os.listdir(directory)
+    pattern = re.compile(rf"{re.escape(theory)}_{re.escape(basis_set)}_(\d+)\.{re.escape(extension)}$")
+    max_index = 0
+
+    # ファイル名から最大の連番を取得
+    for file in existing_files:
+        match = pattern.match(file)
+        if match:
+            max_index = max(max_index, int(match.group(1)))
+
+    # 新しいファイル名を生成
+    new_index = max_index + 1
+    return os.path.join(directory, f"{theory}_{basis_set}_{new_index}.{extension}")
 
 def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
     """
@@ -116,10 +160,19 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
         directory = save_log(compound_name, log_entry)
         mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
 
-        chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
-        molden_file_name = os.path.join(directory, f"{compound_name}_{theory}.molden")
+        # ファイル名を get_sequential_filename を使って生成
+        chkfile_name = get_sequential_filename(directory, theory, basis_set, extension="chk")
+        molden_file = get_sequential_filename(directory, theory, basis_set, extension="molden")
+        output_file = get_sequential_filename(directory, theory, basis_set, extension="out")
 
-        with open(os.path.join(directory, f"output_{theory}.out"), 'w') as f:
+        # ファイル名情報をログに追加
+        log_entry["file_info"] = {
+            "chkfile": os.path.basename(chkfile_name),
+            "molden_file": os.path.basename(molden_file),
+            "output_file": os.path.basename(output_file)
+        }
+
+        with open(output_file, 'w') as f:
             if theory == "HF":
                 mf = scf.RHF(mol)
             elif theory == "MP2":
@@ -137,7 +190,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
             mf.stdout = f
 
             energy = mf.kernel()
-            log_entry["time"] = "End_Time"
+            log_entry["time"] = "Normal_End_Time"
             log_entry["result"] = {
                 "energy": energy,
                 "converged": mf.converged,
@@ -145,13 +198,13 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
             }
             
             # molden.dump_scfを使用してエネルギー情報を含む出力を保存
-            tools.molden.dump_scf(mf, molden_file_name)
+            tools.molden.dump_scf(mf, molden_file)
 
             save_log(compound_name, log_entry)
 
-        return energy
+        return energy, molden_file
     except Exception as e:
-        log_entry["time"] = "Error_End"
+        log_entry["time"] = "Error_End_Time"
         log_entry["error"] = str(e)
         save_log(compound_name, log_entry)
         raise RuntimeError(f"Calculation failed: {e}")
@@ -345,3 +398,5 @@ def calculate_in_solvent(molecule: str, basis: str = 'cc-pVDZ', theory: str = 'B
     energy = mf.kernel()
 
     return energy
+
+

@@ -113,6 +113,43 @@ if st.button("Run Single Point Calculation"):
     except Exception as e:
         st.error(f"Error processing molecule: {e}")
 
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import streamlit as st
+
+    # SCFデータ（例）
+    cycles = list(range(1, 10))
+    delta_E = [1.29, -0.0334, -0.00713, -0.000359, -1.74e-05, -1.67e-06, -1.53e-07, -1.48e-08, -7.74e-10]
+    g_norm = [0.471, 0.221, 0.0383, 0.00768, 0.00187, 0.000566, 0.000147, 3.14e-05, 5.83e-06]
+    ddm = [1.57, 0.329, 0.115, 0.034, 0.00773, 0.00296, 0.000862, 0.000329, 7.51e-05]
+
+    # 絶対値（logスケール対応のため）
+    delta_E_abs = np.abs(delta_E)
+
+    # 収束ライン
+    g_conv_threshold = 3.16228e-05
+
+    # プロット
+    fig, ax = plt.subplots()
+    ax.plot(cycles, delta_E_abs, marker='o', label="ΔE (delta_E)")
+    ax.plot(cycles, g_norm, marker='o', label="|g| (Fock gradient)")
+    ax.plot(cycles, ddm, marker='o', label="|ddm| (Change in density matrix)")
+
+    # 収束ラインの追加（|g|用）
+    ax.axhline(g_conv_threshold, color='red', linestyle='--', label='|g| threshold = 3.16e-5')
+
+    # 軸・ラベル
+    ax.set_yscale("log")
+    ax.set_xlabel("SCF Cycle")
+    ax.set_ylabel("Value (log scale)")
+    ax.set_title("SCF convergence index trend")
+    ax.grid(True)
+    ax.legend()
+
+    # Streamlitで表示
+    st.pyplot(fig)
+
+
 # 計算の実行
     try:
         if not handler or not handler.mol:
@@ -122,18 +159,18 @@ if st.button("Run Single Point Calculation"):
         pyscf_input = handler.to_pyscf_input()
 
         st.write("Running quantum chemistry calculation...")
-        energy = run_quantum_calculation(
+        energy, molden_file = run_quantum_calculation(
             compound_name, smiles, pyscf_input, basis_set, theory, charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, symmetry=symmetry
         )
         
         # 計算結果を表示
         st.success(f"Calculated SinglePoint Energy: {energy} Hartree")
-        st.info(f"Results saved in: {directory}")
+        st.info(f"Results saved in: {molden_file}")
 
         # 軌道エネルギーとHOMO/LUMOを表示
-        molden_file_path = os.path.join(directory, f"{compound_name}_{theory}.molden")
-        if os.path.exists(molden_file_path):
-            orbital_data = extract_orbital_energies(molden_file_path)
+
+        if os.path.exists(molden_file):
+            orbital_data = extract_orbital_energies(molden_file)
 
             # データの検証
             if not orbital_data or "orbital_energies" not in orbital_data:
@@ -162,13 +199,19 @@ if st.button("Run Single Point Calculation"):
             sorted_lumo_index = orbital_df[orbital_df["index"] == lumo_index].index[0] if lumo_index is not None else None
 
             # HOMOとLUMOの情報を表示
+            from logic.output_handler import convert_energy_units  # 必要な関数をインポート
+
             st.subheader("HOMO and LUMO")
             if sorted_lumo_index is not None:
-                st.write(f"LUMO: Index {sorted_lumo_index + 1}, Energy {orbital_df.loc[sorted_lumo_index, 'Energy (Hartree)']:.6f} Hartree")
+                lumo_energy_hartree = orbital_df.loc[sorted_lumo_index, 'Energy (Hartree)']
+                lumo_energy_ev = convert_energy_units(lumo_energy_hartree, unit="eV")  # 引数を2つに修正
+                st.write(f"LUMO: Index {sorted_lumo_index + 1}, Energy {lumo_energy_hartree:.6f} Hartree ({lumo_energy_ev:.2f} eV)")
             else:
                 st.write("LUMO: Not found")
             if sorted_homo_index is not None:
-                st.write(f"HOMO: Index {sorted_homo_index + 1}, Energy {orbital_df.loc[sorted_homo_index, 'Energy (Hartree)']:.6f} Hartree")
+                homo_energy_hartree = orbital_df.loc[sorted_homo_index, 'Energy (Hartree)']
+                homo_energy_ev = convert_energy_units(homo_energy_hartree, unit="eV")  # 引数を2つに修正
+                st.write(f"HOMO: Index {sorted_homo_index + 1}, Energy {homo_energy_hartree:.6f} Hartree ({homo_energy_ev:.2f} eV)")
             else:
                 st.write("HOMO: Not found")
 
