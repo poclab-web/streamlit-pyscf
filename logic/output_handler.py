@@ -11,6 +11,8 @@ PySCFの計算結果は多くの場合、数値や配列形式で出力される
 """
 
 import os
+import re
+import streamlit as st
 
 def format_energy_output(energy):
     """
@@ -64,10 +66,60 @@ def extract_orbital_energies(molden_file_path):
 
     lumo_index = homo_index + 1 if homo_index + 1 < len(orbital_energies) else None
 
-    homo_index = max(i for i, e in enumerate(orbital_energies) if e < 0)  # HOMOのインデックス
-    lumo_index = homo_index + 1 if homo_index + 1 < len(orbital_energies) else None  # LUMOのインデックス
     return {
         "orbital_energies": orbital_energies,
         "homo_index": homo_index,
         "lumo_index": lumo_index,
     }
+
+# フォルダパスを解析して inchikey とファイル名を抽出する関数
+def parse_folder_and_filename(file_path):
+    try:
+        # フォルダを "/" で分割
+        parts = file_path.split(os.sep)
+        inchikey = parts[-2]  # data の次のフォルダ名が inchikey
+        filename = parts[-1]  # ファイル名
+        return inchikey, filename
+    except Exception as e:
+        st.write(f"Error parsing path {file_path}: {e}")
+        return None, None
+
+# MOLDENファイル名を解析して情報を抽出する関数
+def parse_filename(filename):
+    try:
+        # ファイル名を "_" と "." で分割
+        parts = filename.split("_")
+        theory = parts[0]
+        basis_set = parts[1]
+        index, extension = parts[2].split(".")
+        return theory, basis_set, index, extension
+    except Exception as e:
+        st.write(f"Error parsing filename {filename}: {e}")
+        return None, None, None, None
+
+# .outファイルから最後に出現するHOMOおよびLUMOエネルギーを抽出する関数
+def extract_homo_lumo_from_out(out_file):
+    try:
+        with open(out_file, "r") as f:
+            lines = f.readlines()
+        
+        # HOMOとLUMOのエネルギーを格納する変数
+        homo_energy = None
+        lumo_energy = None
+
+        # 正規表現でHOMOとLUMOのエネルギーを検索
+        homo_pattern = r"HOMO.*?=\s*(-?\d+\.\d+)"
+        lumo_pattern = r"LUMO.*?=\s*(-?\d+\.\d+)"
+
+        for line in lines:
+            homo_match = re.search(homo_pattern, line)
+            lumo_match = re.search(lumo_pattern, line)
+            if homo_match:
+                homo_energy = float(homo_match.group(1))
+            if lumo_match:
+                lumo_energy = float(lumo_match.group(1))
+        
+        return homo_energy, lumo_energy
+    except Exception as e:
+        st.write(f"Error processing {out_file}: {e}")
+        return None, None
