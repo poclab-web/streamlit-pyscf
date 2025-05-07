@@ -14,7 +14,7 @@ from utils.module import load_css
 from logic.output_handler import (
     parse_folder_and_filename,
     parse_filename,
-    extract_homo_lumo_from_out,
+    extract_homo_lumo_scf_from_out,
     convert_energy_units
 )
 
@@ -90,37 +90,52 @@ if os.path.exists(data_path):
 else:
     st.write(f"'{data_path}' フォルダが存在しません。")
 
-
-
-if st.checkbox("Show OUT File Information with HOMO and LUMO Energies", value=False):
+if st.checkbox("Show OUT File Information with HOMO, LUMO, and SCF Energies", value=False):
     out_files = glob.glob(os.path.join(data_path, "**", "*.out"), recursive=True)
     combined_data = []
 
     for out_file in out_files:
         # ファイルパスからInChIKeyとファイル名を抽出
         inchikey, filename = parse_folder_and_filename(out_file)
-        # ファイル名を解析して情報を抽出
-        theory, basis_set, index, extension = parse_filename(filename)
-        # .outファイルからHOMO/LUMOエネルギーを取得
-        out_homo_energy, out_lumo_energy = extract_homo_lumo_from_out(out_file)
-        # .outファイルのエネルギーをeVに変換
+
+        # ファイル名を解析して情報を抽出（6要素に変更）
+        theory, basis_set, opt_theory, opt_basis_set, index, extension = parse_filename(filename)
+
+        # .outファイルからHOMO、LUMO、SCFエネルギーを取得
+        out_homo_energy, out_lumo_energy, out_scf_energy = extract_homo_lumo_scf_from_out(out_file)
+
+        # エネルギーをeVに変換（HOMOとLUMOのみ）
         out_homo_energy_ev = convert_energy_units(out_homo_energy, unit="eV") if out_homo_energy is not None else None
         out_lumo_energy_ev = convert_energy_units(out_lumo_energy, unit="eV") if out_lumo_energy is not None else None
+
+        # SCFエネルギーをkcal/molに変換
+        out_scf_energy_kcal = convert_energy_units(out_scf_energy, unit="kcal/mol") if out_scf_energy is not None else None
 
         # データを統合
         combined_data.append({
             "InChIKey": inchikey,
             "Theory": theory,
             "Basis Set": basis_set,
+            "Opt Theory": opt_theory,
+            "Opt Basis Set": opt_basis_set,
             "Index": index,
             "HOMO Energy (eV)": out_homo_energy_ev,
-            "LUMO Energy (eV)": out_lumo_energy_ev
+            "LUMO Energy (eV)": out_lumo_energy_ev,
+            "SCF Energy (Hartree)": out_scf_energy,
+            "SCF Energy (kcal/mol)": out_scf_energy_kcal
         })
 
     if combined_data:
         combined_df = pd.DataFrame(combined_data)
-        st.subheader("OUT File Information with HOMO and LUMO Energies")
+
+        # グループ化して差分を計算
+        combined_df["Energy Difference (kcal/mol)"] = combined_df.groupby(
+            ["InChIKey", "Theory", "Basis Set", "Opt Theory", "Opt Basis Set"]
+        )["SCF Energy (kcal/mol)"].transform(lambda x: x - x.min())
+
+        st.subheader("OUT File Information with HOMO, LUMO, and SCF Energies")
         st.dataframe(combined_df)
     else:
         st.write("No OUT files found.")
+
 

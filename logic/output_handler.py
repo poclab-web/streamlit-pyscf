@@ -84,18 +84,30 @@ def parse_folder_and_filename(file_path):
         st.write(f"Error parsing path {file_path}: {e}")
         return None, None
 
-# MOLDENファイル名を解析して情報を抽出する関数
+
 def parse_filename(filename):
     try:
-        # ファイル名を "_" と "." で分割
-        parts = filename.split("_")
-        theory = parts[0]
-        basis_set = parts[1]
-        index, extension = parts[2].split(".")
-        return theory, basis_set, index, extension
+        name, extension = filename.rsplit(".", 1)
+        name_parts = name.rsplit("_", 1)  # 最後の _index を分離
+        if len(name_parts) != 2:
+            raise ValueError("Invalid filename format.")
+        base, index = name_parts
+
+        # optimization情報があるか判定（__で分割）
+        if "__" in base:
+            theory_basis, opt_theory_basis = base.split("__")
+            theory, basis_set = theory_basis.split("_")
+            opt_theory, opt_basis_set = opt_theory_basis.split("_")
+        else:
+            theory, basis_set = base.split("_")
+            opt_theory, opt_basis_set = "none", "none"
+
+        return theory, basis_set, opt_theory, opt_basis_set, index, extension
+
     except Exception as e:
         st.write(f"Error parsing filename {filename}: {e}")
-        return None, None, None, None
+        return None, None, None, None, None, None
+
 
 # .outファイルから最後に出現するHOMOおよびLUMOエネルギーを抽出する関数
 def extract_homo_lumo_from_out(out_file):
@@ -123,3 +135,35 @@ def extract_homo_lumo_from_out(out_file):
     except Exception as e:
         st.write(f"Error processing {out_file}: {e}")
         return None, None
+
+# .outファイルから最後に出現するHOMO、LUMOエネルギー、およびSCFエネルギーを抽出する関数
+def extract_homo_lumo_scf_from_out(out_file):
+    try:
+        with open(out_file, "r") as f:
+            lines = f.readlines()
+        
+        # HOMO、LUMO、SCFエネルギーを格納する変数
+        homo_energy = None
+        lumo_energy = None
+        scf_energy = None
+
+        # 正規表現でHOMOとLUMOのエネルギーを検索
+        homo_pattern = r"HOMO.*?=\s*(-?\d+\.\d+)"
+        lumo_pattern = r"LUMO.*?=\s*(-?\d+\.\d+)"
+        scf_pattern = r"converged SCF energy\s*=\s*(-?\d+\.\d+)"
+
+        for line in lines:
+            homo_match = re.search(homo_pattern, line)
+            lumo_match = re.search(lumo_pattern, line)
+            scf_match = re.search(scf_pattern, line)
+            if homo_match:
+                homo_energy = float(homo_match.group(1))
+            if lumo_match:
+                lumo_energy = float(lumo_match.group(1))
+            if scf_match:
+                scf_energy = float(scf_match.group(1))
+        
+        return homo_energy, lumo_energy, scf_energy
+    except Exception as e:
+        st.write(f"Error processing {out_file}: {e}")
+        return None, None, None

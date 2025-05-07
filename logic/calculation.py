@@ -66,7 +66,8 @@ def save_log(compound_name, data):
 
     return directory  # ディレクトリパスを返す
 
-def get_sequential_filename(directory, theory, basis_set, extension="molden"):
+
+def get_sequential_filename(directory, theory, basis_set, opt_theory="none", opt_basis_set="none", extension="molden"):
     """
     Generate a sequential filename to avoid overwriting existing files.
 
@@ -74,26 +75,36 @@ def get_sequential_filename(directory, theory, basis_set, extension="molden"):
         directory (str): Directory where the file will be saved.
         theory (str): Theory name to include in the filename.
         basis_set (str): Basis set name to include in the filename.
+        opt_theory (str): Optimization theory name (default: "none").
+        opt_basis_set (str): Optimization basis set name (default: "none").
         extension (str): File extension (default: "molden").
 
     Returns:
         str: A unique filename with a sequential number.
     """
-    # ディレクトリ内の既存ファイルを取得
-    existing_files = os.listdir(directory)
-    pattern = re.compile(rf"{re.escape(theory)}_{re.escape(basis_set)}_(\d+)\.{re.escape(extension)}$")
-    max_index = 0
 
-    # ファイル名から最大の連番を取得
+    # Noneを明示的に"none"に変換（安全処理）
+    opt_theory = opt_theory or "none"
+    opt_basis_set = opt_basis_set or "none"
+
+    # 新形式: theory_basis__opt_theory_opt_basis
+    filename_base = f"{theory}_{basis_set}__{opt_theory}_{opt_basis_set}"
+
+    # ファイル名パターン（末尾に _数字.拡張子）
+    pattern = re.compile(rf"{re.escape(filename_base)}_(\d+)\.{re.escape(extension)}$")
+    existing_files = os.listdir(directory)
+
+    max_index = 0
     for file in existing_files:
         match = pattern.match(file)
         if match:
             max_index = max(max_index, int(match.group(1)))
 
-    # 新しいファイル名を生成
     new_index = max_index + 1
-    return os.path.join(directory, f"{theory}_{basis_set}_{new_index}.{extension}")
+    new_filename = f"{filename_base}_{new_index}.{extension}"
+    return os.path.join(directory, new_filename)
 
+# 分子の設定
 def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
     """
     Set up a PySCF molecule with specified parameters.
@@ -111,6 +122,7 @@ def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, 
         gto.Mole: A PySCF molecule object.
     """
     mol = gto.M(atom=atom_input, basis=basis_set, charge=charge, spin=spin, symmetry=symmetry)
+    mol.unit = 'Angstrom'
     
     if solvent_model == "PCM":
         pcm = solvent.PCM(mol)
@@ -121,7 +133,7 @@ def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, 
     return mol
 
 # 1. 1点計算
-def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
+def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, opt_theory=None, opt_basis_set=None, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
     """
     Execute a quantum chemistry calculation.
 
@@ -161,9 +173,9 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
         mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
 
         # ファイル名を get_sequential_filename を使って生成
-        chkfile_name = get_sequential_filename(directory, theory, basis_set, extension="chk")
-        molden_file = get_sequential_filename(directory, theory, basis_set, extension="molden")
-        output_file = get_sequential_filename(directory, theory, basis_set, extension="out")
+        chkfile_name = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="chk")
+        molden_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="molden")
+        output_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="out")
 
         # ファイル名情報をログに追加
         log_entry["file_info"] = {
@@ -188,6 +200,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
             mf.chkfile = chkfile_name
             mf.verbose = 4
             mf.stdout = f
+            
 
             energy = mf.kernel()
             log_entry["time"] = "Normal_End_Time"
@@ -212,7 +225,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
 
 # 2. 構造最適化計算
 
-def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, conv_params=None):
+def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False, conv_params=None, maxsteps=100):
     """
     Perform geometry optimization for a molecule using PySCF's native optimizer.
 
@@ -244,34 +257,40 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
             "spin": spin,
             "solvent_model": solvent_model,
             "dielectric": eps,
+            "symmetry": symmetry,
             "conv_params": conv_params
         }
     }
+
     try:
         directory = save_log(compound_name, log_entry)
-        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps)
+        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
 
-        chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
+        if theory == "HF":
+            mf = scf.RHF(mol)
+        elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+            mf = dft.RKS(mol)
+            mf.xc = theory
+        else:
+            raise ValueError(f"Unsupported theory: {theory}")
 
-        with open(os.path.join(directory, f"output_{theory}.txt"), 'w') as f:
-            if theory == "HF":
-                mf = scf.RHF(mol)
-            elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
-                mf = dft.RKS(mol)
-                mf.xc = theory
-            else:
-                raise ValueError(f"Unsupported theory: {theory}")
+        # mf.chkfile = chkfile_name
+        mf.kernel()
 
-            mf.chkfile = chkfile_name
-            mf.kernel()
+        conv_params = conv_params if conv_params else {}
+        optimized_mol = optimize(mf, conv_params=conv_params, maxsteps=maxsteps)        
+        # optimized_mol = optimize(mf, solver='geomeTRIC', options=options)
 
-            options = conv_params if conv_params else {}
-            optimized_mol = optimize(mf, solver='geomeTRIC', options=options)
+        bohr_to_angstrom = 0.52917721092
 
-            final_geometry = optimized_mol.atom_coords()
-            log_entry["time"] = "End_Time"
-            log_entry["result"] = {"final_geometry": final_geometry.tolist()}
-            save_log(compound_name, log_entry)
+        final_geometry = "\n".join(
+            f"{atom[0]} {coord[0] * bohr_to_angstrom:.6f} {coord[1] * bohr_to_angstrom:.6f} {coord[2] * bohr_to_angstrom:.6f}"
+            for atom, coord in zip(optimized_mol.atom, optimized_mol.atom_coords())
+            )
+
+        log_entry["time"] = "End_Time"
+        log_entry["result"] = {"final_geometry": final_geometry}
+        save_log(compound_name, log_entry)
 
         return final_geometry
 
