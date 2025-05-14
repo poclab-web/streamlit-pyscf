@@ -10,12 +10,15 @@ pySCFの計算を実行して、実行した結果を出力させる部分
 """
 
 import os
-from pyscf import gto, scf, dft, solvent, tools
+from pyscf import gto, scf, dft, solvent, tools, hessian
+
 import json
 from datetime import datetime
 import tempfile
 import sys
 import re
+
+import numpy as np
 
 from pyscf.geomopt.berny_solver import optimize
 
@@ -29,6 +32,7 @@ basis_set_options = [
     "cc-pVTZ", "aug-cc-pVDZ", "aug-cc-pVTZ", "def2-SVP", "def2-TZVP"
 ]
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
+
 
 # ログ保存関数（化合物ごとのフォルダに保存）
 def save_log(compound_name, data):
@@ -302,39 +306,61 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
 
 
 # 3. 振動計算
-def calculate_vibrational_frequencies(molecule: str, basis: str = 'cc-pVDZ'):
+def calculate_vibrational_frequencies(molecule: str, theory: str = 'HF', basis: str = 'cc-pVDZ'):
     """
-    Calculate vibrational frequencies for a given molecule.
-    
+    Calculate vibrational frequencies for a given molecule using various methods.
+
     Parameters:
         molecule (str): Atomic coordinates in PySCF format.
-        basis (str): Basis set to use for the calculation.
-        
+        theory (str): Method (HF, B3LYP, PBE, M06-2X, B97X-D).
+        basis (str): Basis set to use.
+
     Returns:
-        frequencies (list): List of vibrational frequencies (cm^-1).
+        frequencies (list): Vibrational frequencies in cm^-1.
     """
-    # 定義する分子
+    # 分子オブジェクト作成
     mol = gto.M(atom=molecule, basis=basis, symmetry=True)
 
-    # SCF計算
-    mf = scf.RHF(mol)
+    # 計算方法に応じてSCFオブジェクトを作成
+    theory = theory.upper()
+    if theory == 'HF':
+        mf = scf.RHF(mol)
+    elif theory == 'B3LYP':
+        mf = dft.RKS(mol)
+        mf.xc = 'b3lyp'
+    elif theory == 'PBE':
+        mf = dft.RKS(mol)
+        mf.xc = 'pbe'
+    elif theory == 'M06-2X':
+        mf = dft.RKS(mol)
+        mf.xc = 'm06-2x'
+    elif theory == 'B97X-D':
+        mf = dft.RKS(mol)
+        mf.xc = 'wb97x-d'
+    else:
+        raise ValueError(f"Unsupported theory: {theory}")
+
+    # SCF 計算実行
     mf.kernel()
 
     # ヘシアン行列の計算
-    hess = hessian.RHF(mf).kernel()
+    if isinstance(mf, scf.hf.RHF):
+        hess = hessian.RHF(mf).kernel()
+    else:
+        hess = hessian.RKS(mf).kernel()
 
-    # 質量重み付きヘシアン行列の作成
+    # 質量重み付きヘシアン行列に変換
     natoms = mol.natm
     mass = np.repeat(mol.atom_mass_list(), 3)
     sqrt_mass = np.sqrt(mass)
     mass_weighted_hess = hess / np.outer(sqrt_mass, sqrt_mass)
 
-    # 固有値と固有ベクトルを計算
+    # 固有値（振動モードの二乗）を計算
     eigenvalues, _ = np.linalg.eigh(mass_weighted_hess)
 
-    # 周波数（cm^-1）に変換
+    # 周波数（cm^-1）に変換（虚数＝imaginary frequencyも含む）
     frequencies = np.sqrt(np.abs(eigenvalues)) * np.sign(eigenvalues) * hartree_to_cm1
-    frequencies = np.real_if_close(frequencies)  # 虚数成分を除去
+    frequencies = np.real_if_close(frequencies)
 
     return frequencies.tolist()
 

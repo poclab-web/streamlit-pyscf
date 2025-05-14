@@ -75,10 +75,27 @@ class MoleculeHandler:
         img = Draw.MolToImage(mol, size=(300, 300))
         img.save(output_path)
 
-    def generate_3d_molblock(self):
+    def generate_3d_molblock(self, conf_id=0):
+        """
+        指定された配座の3D構造をMolBlock形式で返す。
+
+        Args:
+            conf_id (int): 配座ID（デフォルトは0）。
+
+        Returns:
+            str: MolBlock形式の3D構造。
+        """
         if not self.mol:
             raise ValueError("Molecule is not initialized.")
-        return Chem.MolToXYZBlock(self.mol)
+        
+        try:
+            # 指定された配座IDのMolBlockを生成
+            mol_block = Chem.MolToMolBlock(self.mol, confId=conf_id)
+            if not mol_block:
+                raise ValueError("MolBlock generation failed.")
+            return mol_block
+        except Exception as e:
+            raise ValueError(f"Failed to generate 3D MolBlock: {e}")
 
     def save_to_sdf(self, output_path="molecule.sdf"):
         if not self.mol:
@@ -97,6 +114,31 @@ class MoleculeHandler:
             for atom in self.mol.GetAtoms():
                 pos = conf.GetAtomPosition(atom.GetIdx())
                 f.write(f"{atom.GetSymbol()} {pos.x:.4f} {pos.y:.4f} {pos.z:.4f}\n")
+
+    def get_xyz_coordinates(self, conf_id=0):
+        """
+        指定した配座IDのXYZ座標を取得する。
+
+        Args:
+            conf_id (int): 配座ID（デフォルトは0）。
+
+        Returns:
+            List[Tuple[str, float, float, float]]: 各原子のシンボルと座標のリスト。
+        """
+        if not self.mol:
+            raise ValueError("Molecule is not initialized.")
+        
+        try:
+            conf = self.mol.GetConformer(conf_id)
+        except ValueError:
+            raise ValueError(f"Conformer with ID {conf_id} does not exist.")
+        
+        xyz_coordinates = []
+        for atom in self.mol.GetAtoms():
+            pos = conf.GetAtomPosition(atom.GetIdx())
+            xyz_coordinates.append((atom.GetSymbol(), pos.x, pos.y, pos.z))
+        
+        return xyz_coordinates
 
     def save_to_zmatrix(self, output_path="molecule.zmatrix"):
         if not self.mol:
@@ -129,5 +171,53 @@ class MoleculeHandler:
             pyscf_atoms.append(f"{atom.GetSymbol()} {pos.x:.8f} {pos.y:.8f} {pos.z:.8f}")
 
         return "\n".join(pyscf_atoms)
+
+    def generate_conformers(self, num_conformers=10, max_iterations=200, prune_rms_threshold=0.5, forcefield="UFF"):
+        """
+        配座探索を実行し、複数の配座を生成する。
+        
+        Args:
+            num_conformers (int): 生成する配座の数。
+            max_iterations (int): 配座生成の最大反復回数。
+            prune_rms_threshold (float): 配座間のRMSDのしきい値（類似配座を削除するため）。
+            forcefield (str): エネルギー最適化に使用する力場 ("UFF" または "MMFF")。
+        
+        Returns:
+            List[Chem.Conformer]: 生成された配座のリスト。
+        """
+        if not self.mol:
+            raise ValueError("Molecule is not initialized.")
+        
+        # 配座生成の設定
+        params = AllChem.ETKDGv3()
+        params.numThreads = 0  # 自動でスレッド数を設定
+        params.maxIterations = max_iterations
+        params.pruneRmsThresh = prune_rms_threshold
+        
+        # 配座を生成
+        conformer_ids = AllChem.EmbedMultipleConfs(self.mol, numConfs=num_conformers, params=params)
+        
+        # 配座のエネルギーを最適化し、エネルギーを計算
+        for conf_id in conformer_ids:
+            if forcefield.upper() == "UFF":
+                success = AllChem.UFFOptimizeMolecule(self.mol, confId=conf_id)
+                if success == 0:  # 最適化成功
+                    ff = AllChem.UFFGetMoleculeForceField(self.mol, confId=conf_id)
+                    energy = ff.CalcEnergy()
+                    self.mol.SetProp(f"Energy_{conf_id}", str(energy))
+            elif forcefield.upper() == "MMFF":
+                mmff_props = AllChem.MMFFGetMoleculeProperties(self.mol, mmffVariant="MMFF94")
+                if mmff_props is None:
+                    raise ValueError("MMFF parameters could not be assigned to the molecule.")
+                success = AllChem.MMFFOptimizeMolecule(self.mol, mmff_props, confId=conf_id)
+                if success == 0:  # 最適化成功
+                    ff = AllChem.MMFFGetMoleculeForceField(self.mol, mmff_props, confId=conf_id)
+                    energy = ff.CalcEnergy()
+                    self.mol.SetProp(f"Energy_{conf_id}", str(energy))
+            else:
+                raise ValueError("Unsupported forcefield. Use 'UFF' or 'MMFF'.")
+        
+        # 配座をリストとして返す
+        return [self.mol.GetConformer(conf_id) for conf_id in conformer_ids]
 
 

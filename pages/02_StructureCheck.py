@@ -75,6 +75,8 @@ if st.button("Run Check Structure"):
         st.subheader("InChIKey")
         st.code(Chem.MolToInchiKey(handler.mol))
 
+        st.code(mol_block)
+
         # SDF display 
         st.subheader("SDF Content")
         st.text_area("SDF Content", value=sdf_content, height=300)
