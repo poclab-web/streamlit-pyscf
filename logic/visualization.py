@@ -24,7 +24,10 @@ NMR計算結果をスペクトル形式でプロット。
 """
 
 import matplotlib.pyplot as plt
-
+import json
+import io
+import numpy as np
+import numpy as np
 
 def plot_energy_convergence(energies):
     """
@@ -90,3 +93,88 @@ def plot_nmr_spectrum(chemical_shifts, intensities):
     plt.title("NMR Spectrum")
     plt.grid()
     plt.show()
+
+
+# TODO : avogadroで読み取れない。
+def generate_cjson(mol, freqs, modes):
+    BOHR_TO_ANGSTROM = 0.529177
+    n_atoms = mol.natm
+    atomic_numbers = [mol.atom_charge(i) for i in range(n_atoms)]
+    coords = (mol.atom_coords() * BOHR_TO_ANGSTROM).flatten().tolist()
+
+    modes = np.array(modes)
+    n_modes = modes.shape[0]
+    n_freqs = len(freqs)
+    n = min(n_modes, n_freqs)
+
+    vibrational_modes = []
+    for i in range(n):
+        # shapeが(n_modes, n_atoms, 3)の場合
+        if modes.shape == (n_modes, n_atoms, 3):
+            vec = modes[i]  # shape: (n_atoms, 3)
+        # shapeが(n_atoms*3, n_modes)の場合
+        elif modes.shape == (n_atoms * 3, n_modes):
+            vec = modes[:, i].reshape(n_atoms, 3)
+        # shapeが(n_modes, n_atoms*3)の場合
+        elif modes.shape == (n_modes, n_atoms * 3):
+            vec = modes[i, :].reshape(n_atoms, 3)
+        else:
+            raise ValueError(f"modes shape {modes.shape} is not compatible with n_atoms={n_atoms}")
+        
+        # 🔧 Å単位に変換
+        vec = vec * BOHR_TO_ANGSTROM
+        vec_list = vec.tolist()  # shape: (n_atoms, 3)
+
+        vibrational_modes.append({
+            "frequency": freqs[i],
+            "eigenVectors": vec_list
+        })
+
+    data = {
+        "chemical json": 0,
+        "atoms": {
+            "elements": {"number": atomic_numbers},
+            "coords": {"3d": coords}
+        },
+        "vibrationalModes": vibrational_modes
+    }
+
+    return json.dumps(data, indent=2)
+
+
+# TODO : gaussianで読み取れない。
+def write_gaussian_log(mol, freqs, modes, filename="vibrations.log"):
+    BOHR_TO_ANGSTROM = 0.529177
+    n_atoms = mol.natm
+    atom_symbols = [mol.atom_symbol(i) for i in range(n_atoms)]
+    atom_numbers = [mol.atom_charge(i) for i in range(n_atoms)]
+
+    # 原子座標取得（省略可能）
+    coords = mol.atom_coords() * BOHR_TO_ANGSTROM
+
+    modes = np.array(modes)
+    n_modes = len(freqs)
+    assert modes.shape[0] in [n_modes, n_atoms * 3]
+
+    with open(filename, 'w') as f:
+        f.write(" Entering Gaussian System, Link 801\n")
+        f.write("\n Frequencies -- " + "  ".join(f"{freqs[i]:10.4f}" for i in range(min(3, n_modes))) + "\n")
+        f.write(" Red. masses --" + "  ".join(f"{1.0:10.4f}" for _ in range(min(3, n_modes))) + "\n")
+        f.write(" Frc consts  --" + "  ".join(f"{0.5:10.4f}" for _ in range(min(3, n_modes))) + "\n")
+        f.write(" IR Inten    --" + "  ".join(f"{10.0:10.4f}" for _ in range(min(3, n_modes))) + "\n\n")
+
+        f.write(" Atom  AN      X      Y      Z\n")
+
+        # 最初の3モードだけ表示（Avogadroでは1モードずつでOK）
+        for i_atom in range(n_atoms):
+            f.write(f" {atom_symbols[i_atom]:>4} {int(atom_numbers[i_atom]):>3}")
+            for i_mode in range(min(3, n_modes)):
+                if modes.shape[0] == n_modes:
+                    vec = modes[i_mode].reshape(n_atoms, 3)[i_atom]
+                else:
+                    vec = modes[:, i_mode].reshape(n_atoms, 3)[i_atom]
+                vec = vec * BOHR_TO_ANGSTROM
+                f.write(f" {vec[0]:>8.4f} {vec[1]:>8.4f} {vec[2]:>8.4f}")
+            f.write("\n")
+
+        f.write("\n Normal termination of Gaussian 09\n")

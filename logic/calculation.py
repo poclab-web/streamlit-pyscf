@@ -10,8 +10,6 @@ pySCFの計算を実行して、実行した結果を出力させる部分
 """
 
 import os
-from pyscf import gto, scf, dft, solvent, tools, hessian
-
 import json
 from datetime import datetime
 import tempfile
@@ -20,7 +18,13 @@ import re
 
 import numpy as np
 
+from pyscf import gto, scf, dft, solvent, tools, hessian
 from pyscf.geomopt.berny_solver import optimize
+from pyscf.hessian import thermo, rhf, rks
+# from pyscf.prop import infrared
+
+from logic.visualization import generate_cjson
+
 
 # 現在の日時を取得してフォーマット
 current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -33,6 +37,9 @@ basis_set_options = [
 ]
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
 
+# 定数を自前で定義
+HARTREE2CM = 219474.6313705
+HARTREE2KCAL = 627.5094740631
 
 # ログ保存関数（化合物ごとのフォルダに保存）
 def save_log(compound_name, data):
@@ -306,63 +313,129 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
 
 
 # 3. 振動計算
-def calculate_vibrational_frequencies(molecule: str, theory: str = 'HF', basis: str = 'cc-pVDZ'):
+
+def calculate_vibrational_frequencies(atom_input: str, theory: str = 'B3LYP', basis_set: str = 'cc-pVDZ',opt_theory=None, opt_basis_set=None, 
+                                       charge=0, spin=0, solvent_model=None, eps=None, symmetry=False,
+                                       temperature=298.15, compound_name=None, smiles=None):
     """
-    Calculate vibrational frequencies for a given molecule using various methods.
-
-    Parameters:
-        molecule (str): Atomic coordinates in PySCF format.
-        theory (str): Method (HF, B3LYP, PBE, M06-2X, B97X-D).
-        basis (str): Basis set to use.
-
-    Returns:
-        frequencies (list): Vibrational frequencies in cm^-1.
+    Calculate vibrational frequencies and thermodynamic properties using PySCF.
     """
-    # 分子オブジェクト作成
-    mol = gto.M(atom=molecule, basis=basis, symmetry=True)
+    log_entry = {
+        "time": "Start_Time",
+        "timestamp": datetime.now().isoformat(),
+        "compound": compound_name,
+        "smiles": smiles,
+        "calculation_type": "vibrational_frequency",
+        "parameters": {
+            "atom_input": atom_input,
+            "basis_set": basis_set,
+            "theory": theory,
+            "charge": charge,
+            "spin": spin,
+            "solvent_model": solvent_model,
+            "dielectric": eps,
+            "symmetry": symmetry,
+            "temperature": temperature
+        }
+    }
 
-    # 計算方法に応じてSCFオブジェクトを作成
-    theory = theory.upper()
-    if theory == 'HF':
-        mf = scf.RHF(mol)
-    elif theory == 'B3LYP':
-        mf = dft.RKS(mol)
-        mf.xc = 'b3lyp'
-    elif theory == 'PBE':
-        mf = dft.RKS(mol)
-        mf.xc = 'pbe'
-    elif theory == 'M06-2X':
-        mf = dft.RKS(mol)
-        mf.xc = 'm06-2x'
-    elif theory == 'B97X-D':
-        mf = dft.RKS(mol)
-        mf.xc = 'wb97x-d'
-    else:
-        raise ValueError(f"Unsupported theory: {theory}")
+    try:
+        directory = None
+        if compound_name:
+            directory = save_log(compound_name, log_entry)
 
-    # SCF 計算実行
-    mf.kernel()
+        chkfile_name = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="chk")
+        molden_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="molden")
+        output_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="out")
+        cjson_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="cjson")
 
-    # ヘシアン行列の計算
-    if isinstance(mf, scf.hf.RHF):
-        hess = hessian.RHF(mf).kernel()
-    else:
-        hess = hessian.RKS(mf).kernel()
+        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
 
-    # 質量重み付きヘシアン行列に変換
-    natoms = mol.natm
-    mass = np.repeat(mol.atom_mass_list(), 3)
-    sqrt_mass = np.sqrt(mass)
-    mass_weighted_hess = hess / np.outer(sqrt_mass, sqrt_mass)
+        theory = theory.upper()
+        if theory == 'HF':
+            mf = scf.RHF(mol)
+            hess_class = rhf.Hessian
+        elif theory in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D']:
+            mf = dft.RKS(mol)
+            mf.xc = theory.lower()
+            hess_class = rks.Hessian
+        else:
+            raise ValueError(f"Unsupported theory: {theory}")
 
-    # 固有値（振動モードの二乗）を計算
-    eigenvalues, _ = np.linalg.eigh(mass_weighted_hess)
+        mf.kernel()
+        
 
-    # 周波数（cm^-1）に変換（虚数＝imaginary frequencyも含む）
-    frequencies = np.sqrt(np.abs(eigenvalues)) * np.sign(eigenvalues) * hartree_to_cm1
-    frequencies = np.real_if_close(frequencies)
+        # ヘシアン計算と振動解析
+        hess_calc = hess_class(mf)
+        hess = hess_calc.kernel()
+        vib_info = thermo.harmonic_analysis(mf.mol, hess)  # ← 修正
+        # norm_mode（固有ベクトル）があれば modes として追加
+        modes = vib_info.get('norm_mode', None)
 
-    return frequencies.tolist()
+        # Thermochemistry analysis at 298.15 K and 1 atmospheric pressure
+        freq_info = thermo.harmonic_analysis(mf.mol, hess)  # ← 修正
+        thermo_info = thermo.thermo(mf, freq_info['freq_au'], temperature=temperature)
+
+        # --- ここからfreq情報をoutfileに出力 ---
+        with open(output_file, 'w') as f:
+            f.write("Vibrational Frequency Analysis\n")
+            f.write("====================================\n")
+            if "freq_wavenumber" in freq_info:
+                f.write("Frequencies (cm^-1):\n")
+                for i, freq in enumerate(freq_info["freq_wavenumber"]):
+                    f.write(f"  Mode {i+1}: {freq:.2f} cm^-1\n")
+            else:
+                f.write("No frequency information found.\n")
+            f.write("\n")
+            if "IR_intensity" in freq_info:
+                f.write("IR Intensities:\n")
+                for i, inten in enumerate(freq_info["IR_intensity"]):
+                    f.write(f"  Mode {i+1}: {inten:.4f}\n")
+            f.write("\n")
+            # --- thermo_infoの出力 ---
+            f.write("Thermodynamic Properties (thermo_info):\n")
+            for key, value in thermo_info.items():
+                if isinstance(value, (float, int)):
+                    f.write(f"{key}: {value}\n")
+                elif isinstance(value, (list, tuple, np.ndarray)):
+                    # 値と単位のペアの場合は値だけ出力
+                    if len(value) == 2 and isinstance(value[0], (float, int)):
+                        f.write(f"{key}: {value[0]} {value[1]}\n")
+                    else:
+                        # それ以外は文字列化して出力
+                        f.write(f"{key}: {str(value)}\n")
+                else:
+                    f.write(f"{key}: {value}\n")
+            f.write("\n")
+
+
+        log_entry["time"] = "End_Time"
+        if compound_name:
+            save_log(compound_name, log_entry)
+
+        # molden.dump_scfを使用してエネルギー情報を含む出力を保存
+        mf.chkfile = chkfile_name
+        tools.molden.dump_scf(mf, molden_file)
+
+        # generate_cjsonの戻り値をファイルに保存
+        cjson_data = generate_cjson(mol, freq_info["freq_wavenumber"], modes)
+        with open(cjson_file, 'w') as f:
+            f.write(cjson_data)
+
+        # ここでmolとmodesを返す
+        return {
+            'frequencies': freq_info,
+            'thermo_info': thermo_info,
+            'mol': mol,
+            'modes': modes
+        }
+
+    except Exception as e:
+        log_entry["time"] = "Error_End"
+        log_entry["error"] = str(e)
+        if compound_name:
+            save_log(compound_name, log_entry)
+        raise RuntimeError(f"Vibrational frequency calculation failed: {e}")
 
 
 # 4. 励起状態計算（時間依存密度汎関数理論：TD-DFT）
