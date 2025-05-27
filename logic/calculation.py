@@ -362,9 +362,9 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str = 'B3LYP', ba
         else:
             raise ValueError(f"Unsupported theory: {theory}")
 
+        mf.chkfile = chkfile_name
         mf.kernel()
         
-
         # ヘシアン計算と振動解析
         hess_calc = hess_class(mf)
         hess = hess_calc.kernel()
@@ -414,7 +414,6 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str = 'B3LYP', ba
             save_log(compound_name, log_entry)
 
         # molden.dump_scfを使用してエネルギー情報を含む出力を保存
-        mf.chkfile = chkfile_name
         tools.molden.dump_scf(mf, molden_file)
 
         # generate_cjsonの戻り値をファイルに保存
