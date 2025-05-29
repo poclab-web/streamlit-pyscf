@@ -168,8 +168,8 @@ if "mol" in st.session_state and "mo_coeff" in st.session_state:
     if internal_mode == "orbital":
         suggested_isoval = float(np.percentile(np.abs(values), 95))
 
-        # --- フロンティア軌道の原子ごとのAO寄与を計算・表示 ---
-        st.subheader("選択軌道の原子ごとのAO寄与")
+        # --- フロンティア軌道の原子ごと電子密度を計算・表示 ---
+        st.subheader("選択軌道の原子ごとのフロンティア電子密度寄与")
         ao_slices = mol.aoslice_by_atom()
         homo_contrib = []
         for i_atom in range(mol.natm):
@@ -225,7 +225,8 @@ if "mol" in st.session_state and "mo_coeff" in st.session_state:
                 f"""
                 **現在の軌道番号:** {orbital_idx}  
                 **占有数 (occupation):** {current_occ:.2f}  
-                **エネルギー (a.u.):** {st.session_state['mf'].mo_energy[orbital_idx]:.6f}
+                **エネルギー (a.u.):** {st.session_state['mf'].mo_energy[orbital_idx]:.6f}  
+                **エネルギー (eV):** {(st.session_state['mf'].mo_energy[orbital_idx] * 27.211386245988):.3f}
                 """
             )
 
