@@ -10,14 +10,24 @@ pySCFの計算を実行して、実行した結果を出力させる部分
 """
 
 import os
-from pyscf import gto, scf, dft, solvent, tools
 import json
 from datetime import datetime
 import tempfile
 import sys
+import re
 
+import numpy as np
+
+from pyscf import gto, scf, dft, solvent, tools, hessian
 from pyscf.geomopt.berny_solver import optimize
+from pyscf.hessian import thermo, rhf, rks
+# from pyscf.prop import infrared
 
+from logic.visualization import generate_cjson
+
+
+# 現在の日時を取得してフォーマット
+current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 # 理論と基底関数の選択肢
 theory_options = ["HF", "B3LYP", "PBE", "M06-2X", "B97X-D"]
@@ -27,6 +37,9 @@ basis_set_options = [
 ]
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
 
+# 定数を自前で定義
+HARTREE2CM = 219474.6313705
+HARTREE2KCAL = 627.5094740631
 
 # ログ保存関数（化合物ごとのフォルダに保存）
 def save_log(compound_name, data):
@@ -44,12 +57,65 @@ def save_log(compound_name, data):
     # ログファイルのパス
     log_file = os.path.join(directory, "calculation_log.json")
 
-    # JSONデータを保存
-    with open(log_file, 'a') as f:
-        f.write(json.dumps(data, indent=4) + '\n')
-    
+    # JSONデータを配列形式で保存
+    if os.path.exists(log_file):
+        # 既存のデータを読み込む
+        with open(log_file, 'r') as f:
+            try:
+                existing_data = json.load(f)
+            except json.JSONDecodeError:
+                existing_data = []
+    else:
+        existing_data = []
+
+    # 新しいデータを追加
+    existing_data.append(data)
+
+    # ファイルに書き込む
+    with open(log_file, 'w') as f:
+        json.dump(existing_data, f, indent=4)
+
     return directory  # ディレクトリパスを返す
 
+
+def get_sequential_filename(directory, theory, basis_set, opt_theory="none", opt_basis_set="none", extension="molden"):
+    """
+    Generate a sequential filename to avoid overwriting existing files.
+
+    Parameters:
+        directory (str): Directory where the file will be saved.
+        theory (str): Theory name to include in the filename.
+        basis_set (str): Basis set name to include in the filename.
+        opt_theory (str): Optimization theory name (default: "none").
+        opt_basis_set (str): Optimization basis set name (default: "none").
+        extension (str): File extension (default: "molden").
+
+    Returns:
+        str: A unique filename with a sequential number.
+    """
+
+    # Noneを明示的に"none"に変換（安全処理）
+    opt_theory = opt_theory or "none"
+    opt_basis_set = opt_basis_set or "none"
+
+    # 新形式: theory_basis__opt_theory_opt_basis
+    filename_base = f"{theory}_{basis_set}__{opt_theory}_{opt_basis_set}"
+
+    # ファイル名パターン（末尾に _数字.拡張子）
+    pattern = re.compile(rf"{re.escape(filename_base)}_(\d+)\.{re.escape(extension)}$")
+    existing_files = os.listdir(directory)
+
+    max_index = 0
+    for file in existing_files:
+        match = pattern.match(file)
+        if match:
+            max_index = max(max_index, int(match.group(1)))
+
+    new_index = max_index + 1
+    new_filename = f"{filename_base}_{new_index}.{extension}"
+    return os.path.join(directory, new_filename)
+
+# 分子の設定
 def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
     """
     Set up a PySCF molecule with specified parameters.
@@ -67,6 +133,7 @@ def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, 
         gto.Mole: A PySCF molecule object.
     """
     mol = gto.M(atom=atom_input, basis=basis_set, charge=charge, spin=spin, symmetry=symmetry)
+    mol.unit = 'Angstrom'
     
     if solvent_model == "PCM":
         pcm = solvent.PCM(mol)
@@ -77,7 +144,7 @@ def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, 
     return mol
 
 # 1. 1点計算
-def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
+def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, opt_theory=None, opt_basis_set=None, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
     """
     Execute a quantum chemistry calculation.
 
@@ -116,10 +183,19 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
         directory = save_log(compound_name, log_entry)
         mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
 
-        chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
-        molden_file_name = os.path.join(directory, f"{compound_name}_{theory}.molden")
+        # ファイル名を get_sequential_filename を使って生成
+        chkfile_name = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="chk")
+        molden_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="molden")
+        output_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="out")
 
-        with open(os.path.join(directory, f"output_{theory}.out"), 'w') as f:
+        # ファイル名情報をログに追加
+        log_entry["file_info"] = {
+            "chkfile": os.path.basename(chkfile_name),
+            "molden_file": os.path.basename(molden_file),
+            "output_file": os.path.basename(output_file)
+        }
+
+        with open(output_file, 'w') as f:
             if theory == "HF":
                 mf = scf.RHF(mol)
             elif theory == "MP2":
@@ -135,9 +211,10 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
             mf.chkfile = chkfile_name
             mf.verbose = 4
             mf.stdout = f
+            
 
             energy = mf.kernel()
-            log_entry["time"] = "End_Time"
+            log_entry["time"] = "Normal_End_Time"
             log_entry["result"] = {
                 "energy": energy,
                 "converged": mf.converged,
@@ -145,13 +222,13 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
             }
             
             # molden.dump_scfを使用してエネルギー情報を含む出力を保存
-            tools.molden.dump_scf(mf, molden_file_name)
+            tools.molden.dump_scf(mf, molden_file)
 
             save_log(compound_name, log_entry)
 
-        return energy
+        return energy, molden_file
     except Exception as e:
-        log_entry["time"] = "Error_End"
+        log_entry["time"] = "Error_End_Time"
         log_entry["error"] = str(e)
         save_log(compound_name, log_entry)
         raise RuntimeError(f"Calculation failed: {e}")
@@ -159,7 +236,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
 
 # 2. 構造最適化計算
 
-def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, conv_params=None):
+def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theory, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False, conv_params=None, maxsteps=100):
     """
     Perform geometry optimization for a molecule using PySCF's native optimizer.
 
@@ -191,34 +268,40 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
             "spin": spin,
             "solvent_model": solvent_model,
             "dielectric": eps,
+            "symmetry": symmetry,
             "conv_params": conv_params
         }
     }
+
     try:
         directory = save_log(compound_name, log_entry)
-        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps)
+        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
 
-        chkfile_name = os.path.join(directory, f"{compound_name}_{theory}.chk")
+        if theory == "HF":
+            mf = scf.RHF(mol)
+        elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+            mf = dft.RKS(mol)
+            mf.xc = theory
+        else:
+            raise ValueError(f"Unsupported theory: {theory}")
 
-        with open(os.path.join(directory, f"output_{theory}.txt"), 'w') as f:
-            if theory == "HF":
-                mf = scf.RHF(mol)
-            elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
-                mf = dft.RKS(mol)
-                mf.xc = theory
-            else:
-                raise ValueError(f"Unsupported theory: {theory}")
+        # mf.chkfile = chkfile_name
+        mf.kernel()
 
-            mf.chkfile = chkfile_name
-            mf.kernel()
+        conv_params = conv_params if conv_params else {}
+        optimized_mol = optimize(mf, conv_params=conv_params, maxsteps=maxsteps)        
+        # optimized_mol = optimize(mf, solver='geomeTRIC', options=options)
 
-            options = conv_params if conv_params else {}
-            optimized_mol = optimize(mf, solver='geomeTRIC', options=options)
+        bohr_to_angstrom = 0.52917721092
 
-            final_geometry = optimized_mol.atom_coords()
-            log_entry["time"] = "End_Time"
-            log_entry["result"] = {"final_geometry": final_geometry.tolist()}
-            save_log(compound_name, log_entry)
+        final_geometry = "\n".join(
+            f"{atom[0]} {coord[0] * bohr_to_angstrom:.6f} {coord[1] * bohr_to_angstrom:.6f} {coord[2] * bohr_to_angstrom:.6f}"
+            for atom, coord in zip(optimized_mol.atom, optimized_mol.atom_coords())
+            )
+
+        log_entry["time"] = "End_Time"
+        log_entry["result"] = {"final_geometry": final_geometry}
+        save_log(compound_name, log_entry)
 
         return final_geometry
 
@@ -230,41 +313,128 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
 
 
 # 3. 振動計算
-def calculate_vibrational_frequencies(molecule: str, basis: str = 'cc-pVDZ'):
+
+def calculate_vibrational_frequencies(atom_input: str, theory: str = 'B3LYP', basis_set: str = 'cc-pVDZ',opt_theory=None, opt_basis_set=None, 
+                                       charge=0, spin=0, solvent_model=None, eps=None, symmetry=False,
+                                       temperature=298.15, compound_name=None, smiles=None):
     """
-    Calculate vibrational frequencies for a given molecule.
-    
-    Parameters:
-        molecule (str): Atomic coordinates in PySCF format.
-        basis (str): Basis set to use for the calculation.
+    Calculate vibrational frequencies and thermodynamic properties using PySCF.
+    """
+    log_entry = {
+        "time": "Start_Time",
+        "timestamp": datetime.now().isoformat(),
+        "compound": compound_name,
+        "smiles": smiles,
+        "calculation_type": "vibrational_frequency",
+        "parameters": {
+            "atom_input": atom_input,
+            "basis_set": basis_set,
+            "theory": theory,
+            "charge": charge,
+            "spin": spin,
+            "solvent_model": solvent_model,
+            "dielectric": eps,
+            "symmetry": symmetry,
+            "temperature": temperature
+        }
+    }
+
+    try:
+        directory = None
+        if compound_name:
+            directory = save_log(compound_name, log_entry)
+
+        chkfile_name = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="chk")
+        molden_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="molden")
+        output_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="out")
+        cjson_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="cjson")
+
+        mol = setup_molecule(atom_input, basis_set, charge, spin, solvent_model, eps, symmetry)
+
+        theory = theory.upper()
+        if theory == 'HF':
+            mf = scf.RHF(mol)
+            hess_class = rhf.Hessian
+        elif theory in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D']:
+            mf = dft.RKS(mol)
+            mf.xc = theory.lower()
+            hess_class = rks.Hessian
+        else:
+            raise ValueError(f"Unsupported theory: {theory}")
+
+        mf.chkfile = chkfile_name
+        mf.kernel()
         
-    Returns:
-        frequencies (list): List of vibrational frequencies (cm^-1).
-    """
-    # 定義する分子
-    mol = gto.M(atom=molecule, basis=basis, symmetry=True)
+        # ヘシアン計算と振動解析
+        hess_calc = hess_class(mf)
+        hess = hess_calc.kernel()
+        vib_info = thermo.harmonic_analysis(mf.mol, hess)  # ← 修正
+        # norm_mode（固有ベクトル）があれば modes として追加
+        modes = vib_info.get('norm_mode', None)
 
-    # SCF計算
-    mf = scf.RHF(mol)
-    mf.kernel()
+        # Thermochemistry analysis at 298.15 K and 1 atmospheric pressure
+        freq_info = thermo.harmonic_analysis(mf.mol, hess)  # ← 修正
+        thermo_info = thermo.thermo(mf, freq_info['freq_au'], temperature=temperature)
 
-    # ヘシアン行列の計算
-    hess = hessian.RHF(mf).kernel()
+        # --- ここからfreq情報をoutfileに出力 ---
+        with open(output_file, 'w') as f:
+            f.write("Vibrational Frequency Analysis\n")
+            f.write("====================================\n")
+            if "freq_wavenumber" in freq_info:
+                f.write("Frequencies (cm^-1):\n")
+                for i, freq in enumerate(freq_info["freq_wavenumber"]):
+                    f.write(f"  Mode {i+1}: {freq:.2f} cm^-1\n")
+            else:
+                f.write("No frequency information found.\n")
+            f.write("\n")
+            if "IR_intensity" in freq_info:
+                f.write("IR Intensities:\n")
+                for i, inten in enumerate(freq_info["IR_intensity"]):
+                    f.write(f"  Mode {i+1}: {inten:.4f}\n")
+            f.write("\n")
+            # --- thermo_infoの出力 ---
+            f.write("Thermodynamic Properties (thermo_info):\n")
+            for key, value in thermo_info.items():
+                if isinstance(value, (float, int)):
+                    f.write(f"{key}: {value}\n")
+                elif isinstance(value, (list, tuple, np.ndarray)):
+                    # 値と単位のペアの場合は値だけ出力
+                    if len(value) == 2 and isinstance(value[0], (float, int)):
+                        f.write(f"{key}: {value[0]} {value[1]}\n")
+                    else:
+                        # それ以外は文字列化して出力
+                        f.write(f"{key}: {str(value)}\n")
+                else:
+                    f.write(f"{key}: {value}\n")
+            f.write("\n")
 
-    # 質量重み付きヘシアン行列の作成
-    natoms = mol.natm
-    mass = np.repeat(mol.atom_mass_list(), 3)
-    sqrt_mass = np.sqrt(mass)
-    mass_weighted_hess = hess / np.outer(sqrt_mass, sqrt_mass)
 
-    # 固有値と固有ベクトルを計算
-    eigenvalues, _ = np.linalg.eigh(mass_weighted_hess)
+        log_entry["time"] = "End_Time"
+        if compound_name:
+            save_log(compound_name, log_entry)
 
-    # 周波数（cm^-1）に変換
-    frequencies = np.sqrt(np.abs(eigenvalues)) * np.sign(eigenvalues) * hartree_to_cm1
-    frequencies = np.real_if_close(frequencies)  # 虚数成分を除去
+        # molden.dump_scfを使用してエネルギー情報を含む出力を保存
+        tools.molden.dump_scf(mf, molden_file)
 
-    return frequencies.tolist()
+        # generate_cjsonの戻り値をファイルに保存
+        cjson_data = generate_cjson(mol, freq_info["freq_wavenumber"], modes)
+        with open(cjson_file, 'w') as f:
+            f.write(cjson_data)
+
+        # ここでmolとmodesを返す
+        return {
+            'frequencies': freq_info,
+            'thermo_info': thermo_info,
+            'mol': mol,
+            'modes': modes
+        }
+
+    except Exception as e:
+        log_entry["time"] = "Error_End"
+        log_entry["error"] = str(e)
+        if compound_name:
+            save_log(compound_name, log_entry)
+        raise RuntimeError(f"Vibrational frequency calculation failed: {e}")
 
 
 # 4. 励起状態計算（時間依存密度汎関数理論：TD-DFT）
@@ -345,3 +515,5 @@ def calculate_in_solvent(molecule: str, basis: str = 'cc-pVDZ', theory: str = 'B
     energy = mf.kernel()
 
     return energy
+
+

@@ -21,7 +21,7 @@ import stmol
 
 from utils.module import load_css
 from logic.molecule_handler import MoleculeHandler
-from logic.calculation import theory_options, basis_set_options, run_geometry_optimization
+from logic.calculation import theory_options, basis_set_options, run_geometry_optimization, run_quantum_calculation
 
 # カスタムCSSを適用
 load_css("config/styles.css")
@@ -66,30 +66,34 @@ with st.expander("Other Settings"):
         eps_input = st.selectbox("Override epsilon value?", ["No", "Yes"])
         if eps_input == "Yes":
             eps = st.number_input("Dielectric Constant (ε)", min_value=1.0, max_value=100.0, value=eps)
+    
+    # symmetryの選択肢を追加
+    symmetry = st.selectbox("Consider Molecular Symmetry?", ["Yes", "No"])
+    symmetry = True if symmetry == "Yes" else False
 
 # 収束条件の入力
-with st.expander("Convergence Parameters"):
+with st.expander("Loose Convergence Parameters"):
     convergence_energy = st.number_input(
         "Energy Tolerance (Hartree)", 
-        min_value=1e-7, value=1e-6, step=1e-7, format="%.7f"
+        min_value=1e-7, value=1.0e-4, step=1e-5, format="%.7f"
     )
     convergence_grms = st.number_input(
         "Gradient RMS Tolerance (Eh/Bohr)", 
-        min_value=1e-5, value=3e-4, step=1e-5, format="%.5f"
+        min_value=1e-5, value=1.0e-3, step=1e-5, format="%.5f"
     )
     convergence_gmax = st.number_input(
         "Gradient Max Tolerance (Eh/Bohr)", 
-        min_value=1e-5, value=4.5e-4, step=1e-5, format="%.5f"
+        min_value=1e-5, value=3.0e-3, step=1e-5, format="%.5f"
     )
     convergence_drms = st.number_input(
         "Displacement RMS Tolerance (Angstrom)", 
-        min_value=1e-4, value=1.2e-3, step=1e-4, format="%.4f"
+        min_value=1e-4, value=4.0e-3, step=1e-4, format="%.4f"
     )
     convergence_dmax = st.number_input(
         "Displacement Max Tolerance (Angstrom)", 
-        min_value=1e-4, value=1.8e-3, step=1e-4, format="%.4f"
+        min_value=1e-4, value=6.0e-3, step=1e-4, format="%.4f"
     )
-    max_iterations = st.number_input(
+    maxsteps = st.number_input(
         "Max Iterations", 
         min_value=1, value=100, step=1
     )
@@ -100,7 +104,6 @@ conv_params = {
     "convergence_gmax": convergence_gmax,
     "convergence_drms": convergence_drms,
     "convergence_dmax": convergence_dmax,
-    "max_steps": max_iterations,
 }
 
 # 最適化の実行
@@ -110,7 +113,7 @@ if st.button("Run Geometry Optimization"):
         handler = MoleculeHandler(atom_input, input_type=input_type.lower())
         if not handler.mol:
             raise ValueError("Invalid molecular input. Please check your format.")
-
+        
         # 化合物名を取得
         compound_name = Chem.MolToInchiKey(handler.mol)
         smiles = Chem.MolToSmiles(handler.mol)
@@ -144,21 +147,37 @@ if st.button("Run Geometry Optimization"):
 
         # 最適化の実行
         st.write("Running geometry optimization...")
+        print("######################################################")
+        print("########## Running geometry optimization...###########")
+        print("######################################################")
         final_geometry = run_geometry_optimization(
             compound_name, smiles, pyscf_input, basis_set, theory, 
-            charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, conv_params=conv_params
+            charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, symmetry=symmetry, conv_params=conv_params, maxsteps=maxsteps
         )
 
-        # 最適化後の構造を表示
-        st.write("### Final Optimized Geometry")
-        for i, coord in enumerate(final_geometry):
-            st.text(f"Atom {i + 1}: {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}")
+        st.success(f"Optimized geometry has been successfully calculated and saved to: {directory}")
+    
+        # 最適化結果の表示
+        st.subheader("Optimized Geometry")
 
-        save_path = os.path.join(directory, "optimized_geometry.xyz")
-        with open(save_path, 'w') as f:
-            f.write(f"{len(final_geometry)}\nOptimized structure\n")
-            for i, coord in enumerate(final_geometry):
-                f.write(f"Atom {i + 1} {coord[0]:.6f} {coord[1]:.6f} {coord[2]:.6f}\n")
-        st.success(f"Optimized geometry has been saved to: {save_path}")
+        def xyz_string_to_pyscf_atom(xyz_str):
+            lines = xyz_str.strip().split('\n')
+            atom_lines = [line for line in lines if len(line.split()) == 4]
+            return "\n".join(atom_lines)
+
+        # Generate PySCF input format
+        pyscf_input = xyz_string_to_pyscf_atom(final_geometry)  
+
+        st.write("Running quantum chemistry calculation...")
+        print("Running single point quantum chemistry calculation...")
+        energy, molden_file = run_quantum_calculation(
+            compound_name, smiles, pyscf_input, basis_set, theory, opt_theory=theory, opt_basis_set=basis_set, charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, symmetry=symmetry
+        )
+        # 計算結果を表示
+        st.success(f"Calculated Energy: {energy} Hartree")
+        st.info(f"Results saved in: {molden_file}")
+        print(f"Calculated Energy: {energy} Hartree")
+        print(f"Results saved in: {molden_file}")
+
     except Exception as e:
         st.error(f"Error during optimization: {e}")
