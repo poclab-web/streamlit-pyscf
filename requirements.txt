@@ -4,10 +4,8 @@ matplotlib
 rdkit
 pyscf
 geometric
+pyberny
 py3Dmol
 pyberny
 stmol
 ipython_genutils
-# Optional dependencies for additional features
-git+https://github.com/pyscf/properties
-git+https://github.com/pyscf/semiempirical
