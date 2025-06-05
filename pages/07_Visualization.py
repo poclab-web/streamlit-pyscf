@@ -20,26 +20,8 @@ import io
 from rdkit import Chem
 from rdkit.Chem import Draw
 
-def list_chk_files(data_dir="data"):
-    chk_paths = []
-    for root, _, files in os.walk(data_dir):
-        for f in files:
-            if f.endswith(".chk"):
-                chk_paths.append(os.path.join(root, f))
-    return chk_paths
-
-def load_mo_info(chk_path):
-    try:
-        mol = lib.chkfile.load_mol(chk_path)
-        mf = scf.RHF(mol)
-        mf.__dict__.update(lib.chkfile.load(chk_path, 'scf'))
-        mo_occ = np.array(mf.mo_occ)
-        homo_idx = np.where(mo_occ > 0)[0][-1]
-        lumo_idx = homo_idx + 1
-        return mol, mf.mo_coeff, mo_occ, homo_idx, lumo_idx, mf
-    except Exception as e:
-        st.error(f"❌ 読み込み失敗: {e}")
-        return None, None, None, None, None
+from logic.data_loader import list_chk_files, load_mo_info
+from logic.visualization import read_cube_values, save_cube_from_data
 
 def generate_xyz_from_mol(mol):
     coords = mol.atom_coords() * 0.529177
@@ -51,21 +33,6 @@ def generate_xyz_from_mol(mol):
     xyz_str = f"{mol.natm}\nGenerated from mol.atom_coords()\n" + "\n".join(xyz_lines)
     return xyz_str
 
-def read_cube_values(cube_path):
-    with open(cube_path) as f:
-        lines = f.readlines()
-    n_atoms = int(lines[2].split()[0])
-    data_lines = lines[6 + n_atoms:]
-    values = np.array([float(v) for line in data_lines for v in line.strip().split()])
-    return values
-
-def save_cube_from_data(filename, cube_data):
-    try:
-        with open(filename, "w") as f:
-            f.write(cube_data)
-        st.success(f"✅ {filename} を保存しました。")
-    except Exception as e:
-        st.error(f"❌ 保存に失敗しました: {e}")
 
 def mol_to_rdkit_mol(mol):
     """pyscfのmolからxyz文字列を作り、RDKit Molに変換"""

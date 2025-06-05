@@ -4,8 +4,9 @@ pySCFの計算を実行して、実行した結果を出力させる部分
 1. 1点計算
 2. 構造最適化計算
 3. 振動計算
-4. 励起状態計算（時間依存密度汎関数理論: TD-DFT）
-5. 分子の応答性（極性率や双極子モーメント）
+4. NMR計算
+5. 励起状態計算（時間依存密度汎関数理論: TD-DFT）
+6. 分子の応答性（極性率や双極子モーメント）
 出てきたファイルの解析については、output_handler.pyで数値の変換し、visualization.pyでグラフなどに変換する。
 """
 
@@ -15,14 +16,20 @@ from datetime import datetime
 import tempfile
 import sys
 import re
+import csv
 
 import numpy as np
+from rdkit import Chem
+from rdkit.Chem import AllChem, rdMolDescriptors
 
 from pyscf import gto, scf, dft, solvent, tools, hessian
 from pyscf.geomopt.berny_solver import optimize
 from pyscf.hessian import thermo, rhf, rks
-# from pyscf.prop import infrared
+from pyscf.prop import nmr
+from pyscf.prop.polarizability import rhf
+from pyscf.prop.polarizability.rhf import polarizability as get_polarizability
 
+from logic.molecule_handler import MoleculeHandler
 from logic.visualization import generate_cjson
 
 
@@ -78,39 +85,26 @@ def save_log(compound_name, data):
     return directory  # ディレクトリパスを返す
 
 
-def get_sequential_filename(directory, theory, basis_set, opt_theory="none", opt_basis_set="none", extension="molden"):
+def get_sequential_filename(directory, theory, basis_set, opt_theory="none", opt_basis_set="none", extension="molden", purpose=None):
     """
     Generate a sequential filename to avoid overwriting existing files.
-
-    Parameters:
-        directory (str): Directory where the file will be saved.
-        theory (str): Theory name to include in the filename.
-        basis_set (str): Basis set name to include in the filename.
-        opt_theory (str): Optimization theory name (default: "none").
-        opt_basis_set (str): Optimization basis set name (default: "none").
-        extension (str): File extension (default: "molden").
-
-    Returns:
-        str: A unique filename with a sequential number.
+    Optionally include a purpose (e.g., 'nmr', 'vib') in the filename.
     """
-
-    # Noneを明示的に"none"に変換（安全処理）
     opt_theory = opt_theory or "none"
     opt_basis_set = opt_basis_set or "none"
+    # 用途（purpose）があればファイル名に追加
+    if purpose:
+        filename_base = f"{theory}_{basis_set}__{opt_theory}_{opt_basis_set}_{purpose}"
+    else:
+        filename_base = f"{theory}_{basis_set}__{opt_theory}_{opt_basis_set}"
 
-    # 新形式: theory_basis__opt_theory_opt_basis
-    filename_base = f"{theory}_{basis_set}__{opt_theory}_{opt_basis_set}"
-
-    # ファイル名パターン（末尾に _数字.拡張子）
     pattern = re.compile(rf"{re.escape(filename_base)}_(\d+)\.{re.escape(extension)}$")
     existing_files = os.listdir(directory)
-
     max_index = 0
     for file in existing_files:
         match = pattern.match(file)
         if match:
             max_index = max(max_index, int(match.group(1)))
-
     new_index = max_index + 1
     new_filename = f"{filename_base}_{new_index}.{extension}"
     return os.path.join(directory, new_filename)
@@ -142,6 +136,22 @@ def setup_molecule(atom_input, basis_set, charge=0, spin=0, solvent_model=None, 
         mol = pcm
 
     return mol
+
+def extract_mol_mf_params(mol, mf):
+    """
+    mol, mfオブジェクトからログ用のパラメータを抽出するユーティリティ関数
+    """
+    params = {
+        "atom_input": mol.atom,  # 原子座標情報
+        "basis_set": mol.basis if isinstance(mol.basis, str) else ",".join(sorted(mol.basis.keys())),
+        "theory": getattr(mf, "xc", "HF") if hasattr(mf, "xc") else "HF",
+        "charge": mol.charge,
+        "spin": mol.spin,
+        "solvent_model": getattr(mol, "solvent", None),
+        "dielectric": getattr(mol, "eps", None),
+        "symmetry": mol.symmetry
+    }
+    return params
 
 # 1. 1点計算
 def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, opt_theory=None, opt_basis_set=None, charge=0, spin=0, solvent_model=None, eps=None, symmetry=False):
@@ -436,8 +446,181 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str = 'B3LYP', ba
             save_log(compound_name, log_entry)
         raise RuntimeError(f"Vibrational frequency calculation failed: {e}")
 
+# 4. NMR計算（化学シフト）
+def calc_nmr_and_shift(mf, mol, target_element=None, basis_set=None, directory=None, theory="HF"):
+    """
+    NMRシールド値のみ計算（Jカップリングなし, 指定元素のみ）
+    basis_setがmolの基底関数と異なる場合は再生成して再計算
+    """
 
-# 4. 励起状態計算（時間依存密度汎関数理論：TD-DFT）
+    # PySCFのmolからxyz座標を取得
+    xyz_str = mol.atom  
+    # MoleculeHandlerでRDKit Molに変換
+    handler = MoleculeHandler(xyz_str, input_type="xyz")
+    compound_name = Chem.MolToInchiKey(handler.mol)
+    smiles = Chem.MolToSmiles(handler.mol)
+
+    # mol, mfからパラメータを抽出
+    log_params = extract_mol_mf_params(mol, mf)
+    # theory, basis_set, target_elementなど引数で上書きしたい場合はここで上書き
+    if basis_set is not None:
+        log_params["basis_set"] = basis_set
+
+    log_entry = {
+        "time": "Start_Time",
+        "timestamp": datetime.now().isoformat(),
+        "compound": compound_name,
+        "smiles": smiles,
+        "calculation_type": "NMR",
+        "parameters": log_params
+    }
+
+    directory = save_log(compound_name, log_entry)
+
+    # molの基底関数と引数のbasis_setが異なる場合は再生成
+    if basis_set is not None:
+        theory="HF"  # NMR計算はHFで行う
+        mol_basis = mol.basis
+        # mol.basisはdict型なので、比較用にstr化
+        if isinstance(mol_basis, dict):
+            mol_basis_str = ",".join(sorted(mol_basis.keys()))
+        else:
+            mol_basis_str = str(mol_basis)
+        if basis_set != mol_basis_str:
+            # 元の座標・電荷・スピン・対称性を使って新しいmolを作成
+            mol = gto.M(
+                atom=mol.atom,
+                charge=mol.charge,
+                spin=mol.spin,
+                symmetry=mol.symmetry,
+                basis=basis_set
+            )
+            mf = scf.RHF(mol)
+            mf.kernel()
+
+    # NMRシールド値保存用ファイル名を生成
+    nmr_calc_result_name = None
+
+    if directory and theory and basis_set:
+        nmr_calc_result_name = get_sequential_filename(directory, theory, basis_set, extension="csv", purpose="nmr")
+
+    nmr_calculator = nmr.RHF(mf)
+    nmr_tensors = nmr_calculator.kernel()
+
+    results = []
+    for i, tensor in enumerate(nmr_tensors):
+        symbol = mol.atom_symbol(i)
+        if target_element is not None and symbol != target_element:
+            continue
+        shield = tensor[0, 0]
+        results.append(
+            {
+                "Atom Index": i,
+                "Element": symbol,
+                "Theory": theory if theory else "",
+                "Basis Set": basis_set if basis_set else "",
+                "NMR Shielding": shield
+            }
+        )
+
+    # --- NMRシールド値をCSVで保存 ---
+    print("nmr_calc_result_name:", nmr_calc_result_name)
+    if nmr_calc_result_name is not None:
+        print("directory exists:", os.path.exists(os.path.dirname(nmr_calc_result_name)))
+        with open(nmr_calc_result_name, "w", newline="") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=["Atom Index", "Element", "Theory", "Basis Set", "NMR Shielding"])
+            writer.writeheader()
+            for row in results:
+                writer.writerow(row)
+
+    log_entry["time"] = "End_Time"
+    log_entry["result"] = {
+        "nmr_shielding": results,
+    }
+
+    if compound_name:
+        save_log(compound_name, log_entry)
+
+    return results, nmr_calc_result_name
+
+# 5. 分子の応答性（極性率や双極子モーメント）
+def compute_electric_properties(mol, basis_set='6-31g', density_g_cm3=1.0, slope = 278.26, intercept = -299.10):
+
+    # PySCFのmolからxyz座標を取得
+    xyz_str = mol.atom  
+    # MoleculeHandlerでRDKit Molに変換
+    handler = MoleculeHandler(xyz_str, input_type="xyz")
+    compound_name = Chem.MolToInchiKey(handler.mol)
+    smiles = Chem.MolToSmiles(handler.mol)
+
+    # 分子量（g/mol）をRDKitから取得
+    mol_weight = rdMolDescriptors.CalcExactMolWt(handler.mol)
+
+    # PySCFで分子構築
+    mol = gto.Mole(
+                atom=mol.atom,
+                charge=mol.charge,
+                spin=mol.spin,
+                symmetry=mol.symmetry,
+                basis=basis_set
+                )
+    # 単位をAngstromに設定
+    mol.unit = 'Angstrom'
+    mol.build()
+
+    # SCF計算
+    mf = scf.RHF(mol).run()
+
+    # 双極子モーメント（Debye）
+    dipole = mf.dip_moment()
+    dipole_norm = np.linalg.norm(dipole)
+
+    # 分極率テンソル（a.u.）
+    pol = rhf.Polarizability(mf)
+    alpha_tensor = get_polarizability(pol)
+    alpha_iso = np.trace(alpha_tensor) / 3
+
+    # 誘電率計算
+    NA = 6.022e23
+    N_cm3 = (density_g_cm3 / mol_weight) * NA
+    alpha_cm3 = alpha_iso * 0.1482e-24
+    eps_calc = 1 + (4 * np.pi / 3) * N_cm3 * alpha_cm3
+
+    # ✅ 補正式（回帰式）による実験値推定
+
+    eps_pred = slope * eps_calc + intercept
+
+    return {
+        "smiles": smiles,
+        "dipole_moment": dipole_norm,
+        "polarizability": alpha_iso,
+        "dielectric_constant_calc": eps_calc,
+        "dielectric_constant_pred": eps_pred,
+    }
+
+
+# 5. 分子の応答性（極性率や双極子モーメント）
+def calculate_polarizability(molecule: str, basis: str = 'cc-pVDZ'):
+    """
+    Calculate molecular polarizability using SCF.
+
+    Parameters:
+        molecule (str): Atomic coordinates in PySCF format.
+        basis (str): Basis set to use for the calculation.
+
+    Returns:
+        numpy.ndarray: Polarizability tensor (au).
+    """
+    mol = gto.M(atom=molecule, basis=basis)
+    mf = scf.RHF(mol)
+    mf.kernel()
+
+    # 応答計算
+    polarizability = mf.Polarizability().kernel()
+    return polarizability
+
+
+# 6. 励起状態計算（時間依存密度汎関数理論：TD-DFT）
 from pyscf import tdscf
 
 def calculate_excited_states(molecule: str, basis: str = 'cc-pVDZ', theory: str = 'B3LYP', num_states: int = 5):
@@ -469,27 +652,8 @@ def calculate_excited_states(molecule: str, basis: str = 'cc-pVDZ', theory: str 
 
     return excitation_energies_ev
 
-# 5. 分子の応答性（極性率や双極子モーメント）
-def calculate_polarizability(molecule: str, basis: str = 'cc-pVDZ'):
-    """
-    Calculate molecular polarizability using SCF.
 
-    Parameters:
-        molecule (str): Atomic coordinates in PySCF format.
-        basis (str): Basis set to use for the calculation.
-
-    Returns:
-        numpy.ndarray: Polarizability tensor (au).
-    """
-    mol = gto.M(atom=molecule, basis=basis)
-    mf = scf.RHF(mol)
-    mf.kernel()
-
-    # 応答計算
-    polarizability = mf.Polarizability().kernel()
-    return polarizability
-
-# 6. 溶媒効果を考慮した計算
+# 7. 溶媒効果を考慮した計算
 
 from pyscf import solvent
 

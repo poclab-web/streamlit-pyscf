@@ -75,6 +75,23 @@ class MoleculeHandler:
         img = Draw.MolToImage(mol, size=(300, 300))
         img.save(output_path)
 
+    def generate_2d_image_with_atom_index(self, out_path):
+        from rdkit.Chem import rdDepictor
+        from rdkit.Chem.Draw import rdMolDraw2D
+
+        # molをコピーして編集
+        mol = Chem.Mol(self.mol)
+        for atom in mol.GetAtoms():
+            # molAtomMapNumberをセット（これで「C:0」などと表示される）
+            atom.SetProp('molAtomMapNumber', str(atom.GetIdx()))
+
+        rdDepictor.Compute2DCoords(mol)
+        drawer = rdMolDraw2D.MolDraw2DCairo(300, 300)
+        drawer.DrawMolecule(mol)
+        drawer.FinishDrawing()
+        with open(out_path, "wb") as f:
+            f.write(drawer.GetDrawingText())
+
     def generate_3d_molblock(self, conf_id=0):
         """
         指定された配座の3D構造をMolBlock形式で返す。
