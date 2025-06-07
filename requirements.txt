@@ -9,3 +9,7 @@ py3Dmol
 pyberny
 stmol
 ipython_genutils
+
+# pyscf github
+git+https://github.com/pyscf/semiempirical
+git+https://github.com/pyscf/properties
