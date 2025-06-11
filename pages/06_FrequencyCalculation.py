@@ -179,6 +179,3 @@ if st.button("Calculate"):
             }
             import pandas as pd
             st.dataframe(pd.DataFrame(df), use_container_width=True)
-
-
-

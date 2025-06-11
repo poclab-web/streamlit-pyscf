@@ -17,8 +17,7 @@ import numpy as np
 
 from utils.module import load_css
 from logic.molecule_handler import MoleculeHandler
-from logic.calculation import theory_options, basis_set_options
-from logic.calculation import run_quantum_calculation
+from logic.calculation import theory_options, basis_set_options, run_quantum_calculation
 from logic.output_handler import extract_orbital_energies
 
 # カスタムCSSを適用
@@ -43,21 +42,20 @@ basis_set = st.selectbox("Basis Set", basis_set_options)
 with st.expander("Other Settings"):
   charge = st.number_input("Molecular Charge", min_value=-10, max_value=10, value=0, step=1)
   multiplicity = st.number_input("Spin Multiplicity (2S + 1)", min_value=1, max_value=10, value=1, step=1)
-  # スピン計算
   spin = multiplicity - 1
-  # 溶媒効果の設定
-  solvent_model = st.selectbox("Select Solvent Model", ["None", "PCM"])
-  eps = None  # epsのデフォルト値を設定
 
-  # symmetryの選択肢を追加
   symmetry = st.selectbox("Consider Molecular Symmetry?", ["Yes", "No"])
   symmetry = True if symmetry == "Yes" else False
+
+  # 溶媒効果の設定
+  solvent_model = st.selectbox("Select Solvent Model", ["None", "PCM", "DDCOSMO"])
+  eps = None  # epsのデフォルト値を設定
 
   # Load solvent data
   solvents_file = "config/solvents_epsilon.csv"
   solvents_data = pd.read_csv(solvents_file)
 
-  if solvent_model == "PCM":
+  if solvent_model in ["PCM", "DDCOSMO"]:
       # Show solvent selection dropdown
       solvent_selection = st.selectbox(
           "Select a solvent",
@@ -66,12 +64,6 @@ with st.expander("Other Settings"):
       # Extract epsilon from selection
       if solvent_selection:
         eps = float(solvent_selection.split("=", 1)[-1][:-1])
-
-      # Additional epsilon input override
-      eps_input = st.selectbox("Override epsilon value?", ["No", "Yes"])
-
-      if eps_input == "Yes":
-          eps = st.number_input("Dielectric Constant (ε)", min_value=1.0, max_value=100.0, value=eps)
 
 # 分子構造を処理
 handler = None

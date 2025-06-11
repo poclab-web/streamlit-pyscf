@@ -48,29 +48,28 @@ with st.expander("Other Settings"):
     # スピン計算
     spin = multiplicity - 1
 
+    # symmetryの選択肢を追加（デフォルトはFalse）
+    symmetry = st.selectbox("Consider Molecular Symmetry?", ["Yes", "No"], index=1)
+    symmetry = True if symmetry == "Yes" else False
+
     # 溶媒効果の設定
-    solvent_model = st.selectbox("Select Solvent Model", ["None", "PCM"])
+    solvent_model = st.selectbox("Select Solvent Model", ["None", "PCM", "DDCOSMO"])
     eps = None  # epsのデフォルト値を設定
 
+    # Load solvent data
     solvents_file = "config/solvents_epsilon.csv"
     solvents_data = pd.read_csv(solvents_file)
 
-    if solvent_model == "PCM":
+    if solvent_model in ["PCM", "DDCOSMO"]:
+        # Show solvent selection dropdown
         solvent_selection = st.selectbox(
             "Select a solvent",
             [f"{row['Solvent']} (ε={row['Epsilon']})" for _, row in solvents_data.iterrows()]
-        )
+        )  
+        # Extract epsilon from selection
         if solvent_selection:
             eps = float(solvent_selection.split("=", 1)[-1][:-1])
-
-        eps_input = st.selectbox("Override epsilon value?", ["No", "Yes"])
-        if eps_input == "Yes":
-            eps = st.number_input("Dielectric Constant (ε)", min_value=1.0, max_value=100.0, value=eps)
     
-    # symmetryの選択肢を追加
-    symmetry = st.selectbox("Consider Molecular Symmetry?", ["Yes", "No"])
-    symmetry = True if symmetry == "Yes" else False
-
 # 収束条件の入力
 with st.expander("Loose Convergence Parameters"):
     convergence_energy = st.number_input(
