@@ -35,10 +35,26 @@ import dftd3.pyscf as d3  # 追加
 # 現在の日時を取得してフォーマット
 current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-# 理論と基底関数の選択肢
-theory_options = ["HF", "MP2", "B3LYP", "B3LYPD3", "PBE", "M06-2X", "B97X-D"]
+# 理論の選択肢
+theory_options = [
+    "HF",         # ハートリー・フォック法（電子相関なし、基準として有用）
+    "MP2",        # 2次の摂動論（電子相関を一部取り込む、post-HF法の入門）
+    "B3LYP",      # 汎用ハイブリッド汎関数（DFTで最も広く使われる）
+    # "CAMB3LYP",   # 長距離補正付きB3LYP（励起状態・CT状態に強い）
+    "B3LYPD3",    # 分散補正付きB3LYP（ファンデルワールス相互作用に対応）
+    "PBE",        # GGA汎関数（計算コストが低く、バルク系や周期系にも適用）
+    # "PBE0",       # ハイブリッド型GGA（構造・スペクトル予測にバランス良）
+    # "LC-ωPBE",    # 長距離補正型PBE（電荷移動・Rydberg状態の記述に有効）
+    "M06-2X",     # 中長距離相互作用に優れたmeta-GGA（有機分子・非共有相互作用）
+    "B97X-D",     # 分散補正付きハイブリッド汎関数（幅広く信頼性のあるDFT）
+    # "ωB97X-D",    # レンジ分離型＋分散補正（TDDFTや反応経路で高精度）
+    # "TPSS",       # meta-GGA（中庸な精度と計算コスト、構造予測向き）
+    # "SCAN"        # 高精度meta-GGA（近年人気、汎用性が高い）
+]
+# 基底関数の選択肢
 basis_set_options = [
     "sto-3g",          # 最小基底
+    "3-21g",           # 教育用途によく使われる軽量基底
     "6-31g",           # 二重ζ基底（DZ）
     "6-31g*",          # +分極関数（重原子にd軌道）
     "6-31g**",         # +分極関数（全原子にd,p軌道）
@@ -46,11 +62,18 @@ basis_set_options = [
     "6-31++g**",       # +分散関数×2（水素にも分散関数）
     "cc-pVDZ",         # correlation-consistent (Dunning系)
     "cc-pVTZ",
+    "cc-pVQZ",         # より高精度なDunning系基底
     "aug-cc-pVDZ",     # 分散関数付き（augmented）
     "aug-cc-pVTZ",
+    "aug-cc-pVQZ",     # Rydberg状態・励起状態向けのaugmented四重ζ
     "def2-SVP",        # def2 系（Karlsruhe基底）
-    "def2-TZVP"
+    "def2-SV(P)",      # 軽量版 def2（H, C, N, O 向け）
+    "def2-TZVP",
+    "def2-QZVP",       # 四重ζ（QZ）で高精度計算用
+    "pcseg-1",         # Jensen の polarization consistent segmented basis
+    "pcseg-2"
 ]
+
 
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
 
