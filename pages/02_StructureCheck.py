@@ -77,16 +77,11 @@ if st.button("Run Check Structure"):
 
         st.code(mol_block)
 
-        # SDF display 
-        st.subheader("SDF Content")
-        st.text_area("SDF Content", value=sdf_content, height=300)
+        # pyscf input
+        st.subheader("PySCF Input")
+        pyscf_input = handler.to_pyscf_input()
+        st.text_area("PySCF Input", value=pyscf_input, height=300)
 
-        # XYZ display 
-        st.subheader("XYZ Content")
-        st.text_area("XYZ Content", value=xyz_content, height=300)
 
-        # Z-Matrix display 
-        st.subheader("Z-Matrix Content")
-        st.text_area("Z-Matrix Content", value=zmatrix_content, height=300)
 
 

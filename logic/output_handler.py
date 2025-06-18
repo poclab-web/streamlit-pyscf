@@ -167,3 +167,25 @@ def extract_homo_lumo_scf_from_out(out_file):
     except Exception as e:
         st.write(f"Error processing {out_file}: {e}")
         return None, None, None
+
+
+def safe_real(x):
+    """複素数やNumPy型を安全に処理して返す"""
+    if isinstance(x, complex):
+        return x.real
+    elif hasattr(x, 'real') and hasattr(x, 'imag'):
+        if abs(x.imag) > 1e-6:
+            return str(x)
+        else:
+            return float(x.real)
+    try:
+        return float(x)
+    except Exception:
+        return str(x)
+
+
+def safe_dict(d):
+    """辞書中の値をsafe_realで再帰的に変換する"""
+    if not isinstance(d, dict):
+        return str(d)
+    return {k: safe_real(v) for k, v in d.items()}

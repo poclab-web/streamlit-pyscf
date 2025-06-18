@@ -108,7 +108,7 @@ if st.button("Calculate"):
 
             pyscf_input = handler.to_pyscf_input()
 
-            results = calculate_vibrational_frequencies(pyscf_input, theory, basis_set, compound_name=compound_name)
+            results = calculate_vibrational_frequencies(pyscf_input, theory, basis_set, charge, spin, compound_name=compound_name)
             frequencies = results['frequencies']
             thermo_info = results['thermo_info']
 

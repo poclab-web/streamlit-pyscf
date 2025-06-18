@@ -29,6 +29,7 @@ import io
 import numpy as np
 import pandas as pd
 
+import streamlit as st
 
 
 def plot_energy_convergence(energies):
@@ -57,6 +58,37 @@ def plot_frequency_spectrum(frequencies, intensities):
     plt.grid(axis="y")
     plt.show()
 
+
+# streamlitの警告メッセージを表示する関数
+def show_imaginary_frequency_warning(freq_data):
+    ""
+    " 振動数データから虚振動の有無をチェックし、警告メッセージを表示する。"
+    freq_info = freq_data.get("frequencies", {})
+
+    # 文字列なら辞書に変換
+    if isinstance(freq_info, str):
+        try:
+            freq_info = eval(freq_info)
+        except Exception:
+            st.warning("⚠️ 振動数データの解析に失敗しました。")
+            return
+
+    freq_wavenumbers = freq_info.get("freq_wavenumber", None)
+
+    if freq_wavenumbers is None:
+        st.warning("⚠️ 振動数データが存在しません。")
+        return
+
+    # 虚数成分の有無をチェック
+    try:
+        imag_freqs = [f for f in freq_wavenumbers if isinstance(f, complex) and f.imag != 0]
+        if imag_freqs:
+            st.error(f"❌ 虚振動あり: {len(imag_freqs)} 個（例: {imag_freqs[0]:.2f}）")
+        else:
+            st.success("✅ 虚振動なし")
+    except Exception:
+        st.warning("⚠️ 虚振動の判定中にエラーが発生しました。")
+
 def plot_energy_decomposition(terms, values):
     """
     エネルギー分解解析 (EDA) の可視化
@@ -70,6 +102,7 @@ def plot_energy_decomposition(terms, values):
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.show()
+
 
 
 def plot_uv_spectrum(wavelengths, intensities):
@@ -179,6 +212,23 @@ def simulate_nmr_spectrum_from_csv(
     table_df = df[["Atom Index", "Element", "Chemical Shift (ppm)"]].reset_index(drop=True)
     return fig, table_df
 
+import numpy as np
+import json
+
+def make_json_safe(obj):
+    """再帰的に complex128 や numpy 型を JSON で扱える形式に変換"""
+    if isinstance(obj, (np.complexfloating, complex)):
+        return obj.real  # または str(obj) にしてもOK
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, np.ndarray):
+        return [make_json_safe(x) for x in obj.tolist()]
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_safe(x) for x in obj]
+    elif isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    return obj
+
 def generate_cjson(mol, freqs, modes):
     BOHR_TO_ANGSTROM = 0.529177
     n_atoms = mol.natm
@@ -192,21 +242,17 @@ def generate_cjson(mol, freqs, modes):
 
     vibrational_modes = []
     for i in range(n):
-        # shapeが(n_modes, n_atoms, 3)の場合
         if modes.shape == (n_modes, n_atoms, 3):
-            vec = modes[i]  # shape: (n_atoms, 3)
-        # shapeが(n_atoms*3, n_modes)の場合
+            vec = modes[i]
         elif modes.shape == (n_atoms * 3, n_modes):
             vec = modes[:, i].reshape(n_atoms, 3)
-        # shapeが(n_modes, n_atoms*3)の場合
         elif modes.shape == (n_modes, n_atoms * 3):
             vec = modes[i, :].reshape(n_atoms, 3)
         else:
             raise ValueError(f"modes shape {modes.shape} is not compatible with n_atoms={n_atoms}")
-        
-        # 🔧 Å単位に変換
+
         vec = vec * BOHR_TO_ANGSTROM
-        vec_list = vec.tolist()  # shape: (n_atoms, 3)
+        vec_list = vec.tolist()
 
         vibrational_modes.append({
             "frequency": freqs[i],
@@ -222,7 +268,54 @@ def generate_cjson(mol, freqs, modes):
         "vibrationalModes": vibrational_modes
     }
 
-    return json.dumps(data, indent=2)
+    # ✅ JSONセーフ化してから出力
+    return json.dumps(make_json_safe(data), indent=2)
+
+
+# def generate_cjson(mol, freqs, modes):
+#     BOHR_TO_ANGSTROM = 0.529177
+#     n_atoms = mol.natm
+#     atomic_numbers = [mol.atom_charge(i) for i in range(n_atoms)]
+#     coords = (mol.atom_coords() * BOHR_TO_ANGSTROM).flatten().tolist()
+
+#     modes = np.array(modes)
+#     n_modes = modes.shape[0]
+#     n_freqs = len(freqs)
+#     n = min(n_modes, n_freqs)
+
+#     vibrational_modes = []
+#     for i in range(n):
+#         # shapeが(n_modes, n_atoms, 3)の場合
+#         if modes.shape == (n_modes, n_atoms, 3):
+#             vec = modes[i]  # shape: (n_atoms, 3)
+#         # shapeが(n_atoms*3, n_modes)の場合
+#         elif modes.shape == (n_atoms * 3, n_modes):
+#             vec = modes[:, i].reshape(n_atoms, 3)
+#         # shapeが(n_modes, n_atoms*3)の場合
+#         elif modes.shape == (n_modes, n_atoms * 3):
+#             vec = modes[i, :].reshape(n_atoms, 3)
+#         else:
+#             raise ValueError(f"modes shape {modes.shape} is not compatible with n_atoms={n_atoms}")
+        
+#         # 🔧 Å単位に変換
+#         vec = vec * BOHR_TO_ANGSTROM
+#         vec_list = vec.tolist()  # shape: (n_atoms, 3)
+
+#         vibrational_modes.append({
+#             "frequency": freqs[i],
+#             "eigenVectors": vec_list
+#         })
+
+#     data = {
+#         "chemical json": 0,
+#         "atoms": {
+#             "elements": {"number": atomic_numbers},
+#             "coords": {"3d": coords}
+#         },
+#         "vibrationalModes": vibrational_modes
+#     }
+
+#     return json.dumps(data, indent=2)
 
 
 # TODO : gaussianで読み取れない。
