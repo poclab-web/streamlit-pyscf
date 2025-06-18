@@ -15,6 +15,7 @@ import multiprocessing
 import sys
 import importlib
 import os
+import pandas as pd
 
 # タイトル
 st.title("PySCF および環境情報の表示")
@@ -74,3 +75,30 @@ if st.checkbox("全パッケージ一覧も表示"):
     all_packages = sorted([(dist.project_name, dist.version) for dist in pkg_resources.working_set])
     for name, version in all_packages:
         st.write(f"{name}: {version}")
+
+st.subheader("🧪 溶媒誘電率データ（solvents_epsion.csv）")
+
+# CSVファイルのパス
+csv_path =  "config/solvents_epsilon.csv"
+
+# CSV読み込み
+if os.path.exists(csv_path):
+    df = pd.read_csv(csv_path)
+    st.dataframe(df)
+else:
+    st.warning(f"{csv_path} が見つかりません。")
+
+# 新規追加フォーム
+with st.expander("溶媒データを追加"):
+    new_name = st.text_input("溶媒名")
+    new_eps = st.number_input("誘電率 (ε)", min_value=0.0, step=0.01, format="%.2f")
+    if st.button("追加"):
+        if new_name and new_eps > 0:
+            # 既存データに追加
+            new_row = pd.DataFrame([[new_name, new_eps]], columns=df.columns)
+            df = pd.concat([df, new_row], ignore_index=True)
+            df.to_csv(csv_path, index=False)
+            st.success(f"{new_name} (ε={new_eps}) を追加しました。")
+            st.rerun()
+        else:
+            st.error("溶媒名と誘電率を正しく入力してください。")

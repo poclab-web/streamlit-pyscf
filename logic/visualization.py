@@ -27,7 +27,10 @@ import matplotlib.pyplot as plt
 import json
 import io
 import numpy as np
-import numpy as np
+import pandas as pd
+
+import streamlit as st
+
 
 def plot_energy_convergence(energies):
     """
@@ -55,6 +58,37 @@ def plot_frequency_spectrum(frequencies, intensities):
     plt.grid(axis="y")
     plt.show()
 
+
+# streamlitの警告メッセージを表示する関数
+def show_imaginary_frequency_warning(freq_data):
+    ""
+    " 振動数データから虚振動の有無をチェックし、警告メッセージを表示する。"
+    freq_info = freq_data.get("frequencies", {})
+
+    # 文字列なら辞書に変換
+    if isinstance(freq_info, str):
+        try:
+            freq_info = eval(freq_info)
+        except Exception:
+            st.warning("⚠️ 振動数データの解析に失敗しました。")
+            return
+
+    freq_wavenumbers = freq_info.get("freq_wavenumber", None)
+
+    if freq_wavenumbers is None:
+        st.warning("⚠️ 振動数データが存在しません。")
+        return
+
+    # 虚数成分の有無をチェック
+    try:
+        imag_freqs = [f for f in freq_wavenumbers if isinstance(f, complex) and f.imag != 0]
+        if imag_freqs:
+            st.error(f"❌ 虚振動あり: {len(imag_freqs)} 個（例: {imag_freqs[0]:.2f}）")
+        else:
+            st.success("✅ 虚振動なし")
+    except Exception:
+        st.warning("⚠️ 虚振動の判定中にエラーが発生しました。")
+
 def plot_energy_decomposition(terms, values):
     """
     エネルギー分解解析 (EDA) の可視化
@@ -68,6 +102,7 @@ def plot_energy_decomposition(terms, values):
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.show()
+
 
 
 def plot_uv_spectrum(wavelengths, intensities):
@@ -94,8 +129,106 @@ def plot_nmr_spectrum(chemical_shifts, intensities):
     plt.grid()
     plt.show()
 
+def simulate_nmr_spectrum(shifts_ppm, j_values_hz, intensities=None, lw=1.0, points=8000, width=0.02):
+    if intensities is None:
+        intensities = [1.0] * len(shifts_ppm)
+    x = np.linspace(0, 10, points)
+    y = np.zeros_like(x)
+    for shift, j, inten in zip(shifts_ppm, j_values_hz, intensities):
+        delta = j / 2 / 400  # 400 MHz NMR換算でHz→ppmに
+        positions = [shift - delta, shift + delta]
+        for pos in positions:
+            line = inten * np.exp(-((x - pos) ** 2) / (2 * width ** 2))
+            y += line
+    fig, ax = plt.subplots(figsize=(10, 3))
+    ax.plot(x, y, color='black')
+    ax.invert_xaxis()
+    ax.set_xlabel("Chemical Shift (ppm)")
+    ax.set_ylabel("Intensity")
+    ax.set_title("Simulated 1H-NMR Spectrum")
+    plt.tight_layout()
+    return fig
 
-# TODO : avogadroで読み取れない。
+def simulate_nmr_spectrum_from_csv(
+    csv_path,
+    target_element=None,
+    TMS_reference_csv_path=None,
+    # chcl3_csv_path=None,
+    # chcl3_exp_shift=7.26,
+    j_values_hz=None,
+    intensities=None,
+    lw=1.0,
+    points=8000,
+    width=0.02
+):
+    """
+    NMRシールド値CSVファイルを読み込み、指定元素のみでNMRスペクトルをシミュレートして表示する
+    chcl3_csv_pathを指定した場合、CHCl3の計算値を使ってスケーリング補正を行う
+    """
+    df = pd.read_csv(csv_path)
+    if target_element is not None:
+        df = df[df["Element"] == target_element]
+
+    # TMS基準値の取得
+    if TMS_reference_csv_path is not None:
+        tms_df = pd.read_csv(TMS_reference_csv_path)
+        sigma_tms = tms_df["NMR Shielding"].mean()
+    else:
+        sigma_tms = df["NMR Shielding"].mean()
+
+    # # CHCl3基準値の取得とスケーリングファクター
+    # scaling_factor = 1.0
+    # if chcl3_csv_path is not None:
+    #     chcl3_df = pd.read_csv(chcl3_csv_path)
+    #     sigma_chcl3 = chcl3_df["NMR Shielding"].mean()
+    #     # 実験値7.26ppm, TMSは0ppm
+    #     scaling_factor = chcl3_exp_shift / (sigma_tms - sigma_chcl3)
+
+    # ケミカルシフト計算＋スケーリング
+    df["Chemical Shift (ppm)"] = sigma_tms - df["NMR Shielding"]
+    shifts_ppm = df["Chemical Shift (ppm)"]
+
+    if j_values_hz is None:
+        j_values_hz = [0.0] * len(shifts_ppm)
+    if intensities is None:
+        intensities = [1.0] * len(shifts_ppm)
+
+    x = np.linspace(0, 10, points)
+    y = np.zeros_like(x)
+    for shift, j, inten in zip(shifts_ppm, j_values_hz, intensities):
+        delta = j / 2 / 400
+        positions = [shift - delta, shift + delta]
+        for pos in positions:
+            line = inten * np.exp(-((x - pos) ** 2) / (2 * width ** 2))
+            y += line
+    fig, ax = plt.subplots(figsize=(10, 3))
+    ax.plot(x, y, color='black')
+    ax.invert_xaxis()
+    ax.set_xlabel("Chemical Shift (ppm)")
+    ax.set_ylabel("Intensity")
+    ax.set_title("Simulated 1H-NMR Spectrum (scaled)")
+    plt.tight_layout()
+
+    table_df = df[["Atom Index", "Element", "Chemical Shift (ppm)"]].reset_index(drop=True)
+    return fig, table_df
+
+import numpy as np
+import json
+
+def make_json_safe(obj):
+    """再帰的に complex128 や numpy 型を JSON で扱える形式に変換"""
+    if isinstance(obj, (np.complexfloating, complex)):
+        return obj.real  # または str(obj) にしてもOK
+    elif isinstance(obj, (np.integer, np.floating)):
+        return obj.item()
+    elif isinstance(obj, np.ndarray):
+        return [make_json_safe(x) for x in obj.tolist()]
+    elif isinstance(obj, (list, tuple)):
+        return [make_json_safe(x) for x in obj]
+    elif isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    return obj
+
 def generate_cjson(mol, freqs, modes):
     BOHR_TO_ANGSTROM = 0.529177
     n_atoms = mol.natm
@@ -109,21 +242,17 @@ def generate_cjson(mol, freqs, modes):
 
     vibrational_modes = []
     for i in range(n):
-        # shapeが(n_modes, n_atoms, 3)の場合
         if modes.shape == (n_modes, n_atoms, 3):
-            vec = modes[i]  # shape: (n_atoms, 3)
-        # shapeが(n_atoms*3, n_modes)の場合
+            vec = modes[i]
         elif modes.shape == (n_atoms * 3, n_modes):
             vec = modes[:, i].reshape(n_atoms, 3)
-        # shapeが(n_modes, n_atoms*3)の場合
         elif modes.shape == (n_modes, n_atoms * 3):
             vec = modes[i, :].reshape(n_atoms, 3)
         else:
             raise ValueError(f"modes shape {modes.shape} is not compatible with n_atoms={n_atoms}")
-        
-        # 🔧 Å単位に変換
+
         vec = vec * BOHR_TO_ANGSTROM
-        vec_list = vec.tolist()  # shape: (n_atoms, 3)
+        vec_list = vec.tolist()
 
         vibrational_modes.append({
             "frequency": freqs[i],
@@ -139,7 +268,54 @@ def generate_cjson(mol, freqs, modes):
         "vibrationalModes": vibrational_modes
     }
 
-    return json.dumps(data, indent=2)
+    # ✅ JSONセーフ化してから出力
+    return json.dumps(make_json_safe(data), indent=2)
+
+
+# def generate_cjson(mol, freqs, modes):
+#     BOHR_TO_ANGSTROM = 0.529177
+#     n_atoms = mol.natm
+#     atomic_numbers = [mol.atom_charge(i) for i in range(n_atoms)]
+#     coords = (mol.atom_coords() * BOHR_TO_ANGSTROM).flatten().tolist()
+
+#     modes = np.array(modes)
+#     n_modes = modes.shape[0]
+#     n_freqs = len(freqs)
+#     n = min(n_modes, n_freqs)
+
+#     vibrational_modes = []
+#     for i in range(n):
+#         # shapeが(n_modes, n_atoms, 3)の場合
+#         if modes.shape == (n_modes, n_atoms, 3):
+#             vec = modes[i]  # shape: (n_atoms, 3)
+#         # shapeが(n_atoms*3, n_modes)の場合
+#         elif modes.shape == (n_atoms * 3, n_modes):
+#             vec = modes[:, i].reshape(n_atoms, 3)
+#         # shapeが(n_modes, n_atoms*3)の場合
+#         elif modes.shape == (n_modes, n_atoms * 3):
+#             vec = modes[i, :].reshape(n_atoms, 3)
+#         else:
+#             raise ValueError(f"modes shape {modes.shape} is not compatible with n_atoms={n_atoms}")
+        
+#         # 🔧 Å単位に変換
+#         vec = vec * BOHR_TO_ANGSTROM
+#         vec_list = vec.tolist()  # shape: (n_atoms, 3)
+
+#         vibrational_modes.append({
+#             "frequency": freqs[i],
+#             "eigenVectors": vec_list
+#         })
+
+#     data = {
+#         "chemical json": 0,
+#         "atoms": {
+#             "elements": {"number": atomic_numbers},
+#             "coords": {"3d": coords}
+#         },
+#         "vibrationalModes": vibrational_modes
+#     }
+
+#     return json.dumps(data, indent=2)
 
 
 # TODO : gaussianで読み取れない。
@@ -178,3 +354,19 @@ def write_gaussian_log(mol, freqs, modes, filename="vibrations.log"):
             f.write("\n")
 
         f.write("\n Normal termination of Gaussian 09\n")
+
+def read_cube_values(cube_path):
+    with open(cube_path) as f:
+        lines = f.readlines()
+    n_atoms = int(lines[2].split()[0])
+    data_lines = lines[6 + n_atoms:]
+    values = np.array([float(v) for line in data_lines for v in line.strip().split()])
+    return values
+
+def save_cube_from_data(filename, cube_data):
+    try:
+        with open(filename, "w") as f:
+            f.write(cube_data)
+        st.success(f"✅ {filename} を保存しました。")
+    except Exception as e:
+        st.error(f"❌ 保存に失敗しました: {e}")
