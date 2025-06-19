@@ -103,6 +103,8 @@ class MoleculeHandler:
         return any(atom.GetNumRadicalElectrons() > 0 for atom in self.mol.GetAtoms())
 
 
+
+
     def generate_conformers(self, num_conformers=10, max_iterations=200, prune_rms_threshold=0.5, forcefield="MMFF"):
         if not self.mol:
             raise ValueError("Molecule is not initialized.")
@@ -126,6 +128,8 @@ class MoleculeHandler:
                     ff = AllChem.UFFGetMoleculeForceField(self.mol, confId=conf_id)
                     energy = ff.CalcEnergy()
                     self.mol.SetProp(f"Energy_{conf_id}", str(energy))
+                else:
+                    print(f"[WARNING] UFF optimization failed for conformer {conf_id}.")
 
             elif forcefield.upper() == "MMFF":
                 mmff_props = AllChem.MMFFGetMoleculeProperties(self.mol, mmffVariant="MMFF94")
@@ -138,6 +142,9 @@ class MoleculeHandler:
                     ff = AllChem.MMFFGetMoleculeForceField(self.mol, mmff_props, confId=conf_id)
                     energy = ff.CalcEnergy()
                     self.mol.SetProp(f"Energy_{conf_id}", str(energy))
+                else:
+                    print(f"[WARNING] MMFF optimization failed for conformer {conf_id}.")
+                    self.mol.SetProp(f"Energy_{conf_id}", "NaN")
 
             else:
                 raise ValueError("Unsupported forcefield. Use 'UFF' or 'MMFF'.")

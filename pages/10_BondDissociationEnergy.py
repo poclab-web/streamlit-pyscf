@@ -124,6 +124,8 @@ if st.button("フラグメントを生成"):
 # ▼ 計算条件の選択
 st.header("🔧 配座生成と計算設定")
 
+apply_force_field = st.checkbox("分子力場による構造最適化を行う", value=True)
+
 # Choose force field
 force_field = st.selectbox("Select Force Field", ["MMFF", "UFF"])
 
@@ -233,16 +235,27 @@ if "fragments" in st.session_state:
         st.dataframe(selected_df)
 
         if st.button("選択された全フラグメントでBDEを一括計算"):
-            method_text = f"""
-            **Computational Details**  
-            Molecular structures were generated from SMILES inputs using RDKit [1], and 3D conformers were generated using the ETKDG method.  
-            A total of {num_conformers} conformers were generated for each molecule and optimized using the {force_field} force field.  
-            The lowest-energy conformer according to the {force_field} force field was selected for subsequent quantum chemical geometry optimization.  
-            Quantum chemical optimizations were performed at the **{theory}/{basis}** level using PySCF [2].  
-            {"No solvent model was applied." if solvent_model == "None" else f"The solvent effect was considered using the {solvent_model} model with a dielectric constant of ε = {eps}."}  
-            Geometry optimizations were conducted with a convergence threshold of {convergence_energy:.1e} Hartree (energy), {convergence_gmax:.1e} Eh/Bohr (max gradient), and a maximum of {maxsteps} optimization steps.  
-            All calculations were performed using a custom Streamlit-based interface [3] integrating RDKit and PySCF.
-            """
+            if apply_force_field:
+                method_text = f"""
+                **Computational Details**  
+                Molecular structures were generated from SMILES inputs using RDKit [1], and 3D conformers were generated using the ETKDG method.  
+                A total of {num_conformers} conformers were generated for each molecule and optimized using the {force_field} force field.  
+                The lowest-energy conformer according to the {force_field} force field was selected for subsequent quantum chemical geometry optimization.  
+                Quantum chemical optimizations were performed at the **{theory}/{basis}** level using PySCF [2].  
+                {"No solvent model was applied." if solvent_model == "None" else f"The solvent effect was considered using the {solvent_model} model with a dielectric constant of ε = {eps}."}  
+                Geometry optimizations were conducted with a convergence threshold of {convergence_energy:.1e} Hartree (energy), {convergence_gmax:.1e} Eh/Bohr (max gradient), and a maximum of {maxsteps} optimization steps.  
+                All calculations were performed using a custom Streamlit-based interface [3] integrating RDKit and PySCF.
+                """
+            else:
+                method_text = f"""
+                **Computational Details**  
+                Molecular structures were generated from SMILES inputs using RDKit [1], and 3D coordinates were generated.  
+                These structures were directly used as initial geometries for quantum chemical optimization at the **{theory}/{basis}** level using PySCF [2].  
+                {"No solvent model was applied." if solvent_model == "None" else f"The solvent effect was considered using the {solvent_model} model with a dielectric constant of ε = {eps}."}  
+                Geometry optimizations were conducted with a convergence threshold of {convergence_energy:.1e} Hartree (energy), {convergence_gmax:.1e} Eh/Bohr (max gradient), and a maximum of {maxsteps} optimization steps.  
+                All calculations were performed using a custom Streamlit-based interface [3] integrating RDKit and PySCF.
+                """
+
             references = """
             **References**  
             [1] Landrum, G. RDKit: Open-source cheminformatics. [https://www.rdkit.org](https://www.rdkit.org)  
@@ -269,12 +282,13 @@ if "fragments" in st.session_state:
                     # 中性分子の計算
                     compound_name = Chem.MolToInchiKey(handler.mol)
                     # 原子数が2つ以上のときだけ最適化（[H]などはスキップ）
-                    if handler.mol.GetNumAtoms() > 2:
-                        handler.generate_conformers(
-                            num_conformers=num_conformers,
-                            forcefield=force_field
-                        )
-                        handler.keep_lowest_energy_conformer()
+                    if apply_force_field:
+                        if handler.mol.GetNumAtoms() > 2:
+                            handler.generate_conformers(
+                                num_conformers=num_conformers,
+                                forcefield=force_field
+                            )
+                            handler.keep_lowest_energy_conformer()
                     pyscf_input_G = handler.to_pyscf_input()
                     G_mol_raw = compute_neutral_molecule_properties(
                         compound_name, smiles_input, pyscf_input_G,
@@ -292,13 +306,14 @@ if "fragments" in st.session_state:
 
                     # ラジカル1
                     handler_f1 = MoleculeHandler(frag1, input_type="smiles")
-                    # 原子数が2つ以上のときだけ最適化（[H]などはスキップ）
-                    if handler_f1.mol.GetNumAtoms() > 1:
-                        handler_f1.generate_conformers(
-                            num_conformers=num_conformers,
-                            forcefield=force_field
-                        )
-                        handler_f1.keep_lowest_energy_conformer()
+
+                    if apply_force_field:
+                        if handler_f1.mol.GetNumAtoms() > 1:
+                            handler_f1.generate_conformers(
+                                num_conformers=num_conformers,
+                                forcefield=force_field
+                            )
+                            handler_f1.keep_lowest_energy_conformer()
 
                     pyscf_input_f1 = handler_f1.to_pyscf_input()
                     frag1_name = f"{compound_name}_{selected_row['bond_index']}_frag1"
@@ -319,12 +334,15 @@ if "fragments" in st.session_state:
 
                     # ラジカル2
                     handler_f2 = MoleculeHandler(frag2, input_type="smiles")
-                    if handler_f2.mol.GetNumAtoms() > 1:
-                        handler_f2.generate_conformers(
-                            num_conformers=num_conformers,
-                            forcefield=force_field
-                        )           
-                        handler_f2.keep_lowest_energy_conformer()
+                    
+                    if apply_force_field:
+                        if handler_f2.mol.GetNumAtoms() > 1:
+                            handler_f2.generate_conformers(
+                                num_conformers=num_conformers,
+                                forcefield=force_field
+                            )           
+                            handler_f2.keep_lowest_energy_conformer()
+
                     pyscf_input_f2 = handler_f2.to_pyscf_input()
                     frag2_name = f"{compound_name}_{selected_row['bond_index']}_frag2"
 
@@ -379,4 +397,3 @@ if "fragments" in st.session_state:
                 st.markdown("### 📊 BDE Calculation Details")
 
                 st.markdown(bde_description)
-

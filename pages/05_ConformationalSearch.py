@@ -53,9 +53,18 @@ if st.button("Generate Conformers"):
 
         # Sort conformers by energy
         conformers_with_energy = []
+
         for conf in conformers:
-            energy = handler.mol.GetProp(f"Energy_{conf.GetId()}")
-            conformers_with_energy.append((conf.GetId(), float(energy)))
+            try:
+                energy = handler.mol.GetProp(f"Energy_{conf.GetId()}")
+                conformers_with_energy.append((conf.GetId(), float(energy)))
+            except KeyError:
+                st.warning(f"⚠️ Energy for conformer ID {conf.GetId()} is not available. Skipping.")
+                continue
+
+        if not conformers_with_energy:
+            st.warning("⚠️ 全てのコンフォーマーのエネルギー取得に失敗しました。分子構造や力場の選択を見直してください。")
+            st.stop()
 
         conformers_with_energy = sorted(conformers_with_energy, key=lambda x: x[1])
 
