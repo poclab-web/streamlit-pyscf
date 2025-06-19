@@ -202,8 +202,22 @@ if "fragments" in st.session_state:
     st.subheader("🔍 分解候補を選択してください（複数可）")
 
     handler = MoleculeHandler(smiles_input, input_type="smiles")
-    image_buffer = handler.generate_2d_image_with_bond_index()
-    st.image(image_buffer, caption="Bond Index")
+
+    # 🔘 画像表示のオプション
+    show_image = st.checkbox("🖼️ Bond Index画像を表示する", value=True)
+
+    # 💠 画像生成と表示（オプション）
+    if show_image:
+        try:
+            image_buffer = handler.generate_2d_image_with_bond_index()
+            if image_buffer:
+                st.image(image_buffer, caption="Bond Index")
+            else:
+                st.warning("画像バッファが生成されませんでした。")
+        except Exception as e:
+            st.error(f"画像生成中にエラーが発生しました: {e}")
+    else:
+        st.info("画像は表示されません。")
 
     df_frag = st.session_state["fragments"]   
     selected_rows = []
