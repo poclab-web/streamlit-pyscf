@@ -16,7 +16,9 @@ def insert_molecule_with_frequencies(
     dielectric=None,
     temperature=298.15,
     pressure=1.0,
-    frequencies=None,  
+    frequencies=None,
+    num_imaginary=None,  
+    chk_file_path=None,
     db_path="data/energy_db.sqlite"
 ):
     mol = Chem.MolFromSmiles(smiles)
@@ -25,6 +27,12 @@ def insert_molecule_with_frequencies(
     molblock = Chem.MolToMolBlock(mol)
     mw = Descriptors.MolWt(mol)
     formula = rdMolDescriptors.CalcMolFormula(mol)
+
+    # .chkファイルのバイナリデータを読み込み
+    chk_file_data = None
+    if chk_file_path:
+        with open(chk_file_path, "rb") as f:
+            chk_file_data = f.read()
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -48,11 +56,12 @@ def insert_molecule_with_frequencies(
         temperature REAL,
         pressure REAL,
         frequencies TEXT,
+        chk_file BLOB,
+        num_imaginary INTEGER,  -- 追加: 虚振動の数
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
 
-    # JSON文字列に変換
     freq_json = json.dumps(frequencies) if frequencies else None
 
     # データ挿入
@@ -60,12 +69,12 @@ def insert_molecule_with_frequencies(
     INSERT INTO molecules (
         smiles, mol, mw, formula, charge, spin, g_tot, zpe,
         method, basis, solvent, dielectric, temperature, pressure,
-        frequencies, timestamp
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        frequencies, chk_file, num_imaginary, timestamp
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         smiles, molblock, mw, formula, charge, spin, g_tot, zpe,
         method, basis, solvent, dielectric, temperature, pressure,
-        freq_json, datetime.now().isoformat()
+        freq_json, chk_file_data, num_imaginary, datetime.now().isoformat()
     ))
 
     conn.commit()
@@ -100,7 +109,7 @@ def get_molecule_from_sqlite(smiles, method, basis, spin, charge,
     cur = conn.cursor()
 
     query = """
-    SELECT id, g_tot, zpe, frequencies
+    SELECT id, g_tot, zpe, frequencies, chk_file, num_imaginary
     FROM molecules
     WHERE smiles = ? AND method = ? AND basis = ?
       AND spin = ? AND charge = ? AND temperature = ? AND pressure = ?
@@ -124,13 +133,66 @@ def get_molecule_from_sqlite(smiles, method, basis, spin, charge,
     conn.close()
 
     if row:
-        molecule_id, g_tot, zpe, freq_json = row
+        molecule_id, g_tot, zpe, freq_json, chk_file, num_imaginary = row
         frequencies = json.loads(freq_json) if freq_json else None
         return {
             "id": molecule_id,
             "g_tot": g_tot,
             "zpe": zpe,
-            "frequencies": frequencies
+            "frequencies": frequencies,
+            "chk_file": chk_file,
+            "num_imaginary": num_imaginary
+        }
+    else:
+        return None
+
+def get_stable_molecule_from_sqlite(smiles, method, basis, spin, charge,
+                                    solvent=None, dielectric=None,
+                                    temperature=298.15, pressure=1.0,
+                                    db_path="energy_db.sqlite"):
+    import sqlite3
+    import json
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    query = """
+    SELECT id, g_tot, zpe, frequencies, chk_file, num_imaginary
+    FROM molecules
+    WHERE smiles = ? AND method = ? AND basis = ?
+      AND spin = ? AND charge = ? AND temperature = ? AND pressure = ?
+      AND num_imaginary = 0
+    """
+    params = [smiles, method, basis, spin, charge, temperature, pressure]
+
+    if solvent is None:
+        query += " AND solvent IS NULL"
+    else:
+        query += " AND solvent = ?"
+        params.append(solvent)
+
+    if dielectric is None:
+        query += " AND dielectric IS NULL"
+    else:
+        query += " AND dielectric = ?"
+        params.append(dielectric)
+
+    query += " ORDER BY g_tot ASC LIMIT 1"  # エネルギーが最小のもの
+
+    cur.execute(query, params)
+    row = cur.fetchone()
+    conn.close()
+
+    if row:
+        molecule_id, g_tot, zpe, freq_json, chk_file, num_imaginary = row
+        frequencies = json.loads(freq_json) if freq_json else None
+        return {
+            "id": molecule_id,
+            "g_tot": g_tot,
+            "zpe": zpe,
+            "frequencies": frequencies,
+            "chk_file": chk_file,
+            "num_imaginary": num_imaginary
         }
     else:
         return None

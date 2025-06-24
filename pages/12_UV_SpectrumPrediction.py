@@ -4,6 +4,8 @@ UVの予測
 """
 
 import streamlit as st
+from utils.module import load_css
+
 from pyscf import gto, dft, tdscf
 from rdkit import Chem
 from rdkit.Chem import AllChem, Draw

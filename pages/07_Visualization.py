@@ -9,6 +9,8 @@ import os
 import tempfile
 
 import streamlit as st
+from utils.module import load_css
+
 import streamlit.components.v1 as components
 import py3Dmol
 import stmol
@@ -22,6 +24,9 @@ from rdkit.Chem import Draw
 
 from logic.data_loader import list_chk_files, load_mo_info
 from logic.visualization import read_cube_values, save_cube_from_data
+
+# カスタムCSSを適用
+load_css("config/styles.css")
 
 def generate_xyz_from_mol(mol):
     coords = mol.atom_coords() * 0.529177

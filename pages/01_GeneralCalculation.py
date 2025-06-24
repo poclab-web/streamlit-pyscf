@@ -3,6 +3,8 @@
 """
 
 import streamlit as st
+from utils.module import load_css
+
 import os
 import pandas as pd
 from rdkit import Chem
@@ -13,6 +15,9 @@ from logic.calculation import (
     run_geometry_optimization, run_quantum_calculation,
     calculate_vibrational_frequencies
 )
+
+# カスタムCSSを適用
+load_css("config/styles.css")
 
 st.title("General Calculation Workflow")
 

@@ -1,6 +1,8 @@
 """
 複数計算についてのまとめについて行う。
 """
+import streamlit as st
+from utils.module import load_css
 
 import streamlit as st
 import pandas as pd
@@ -19,6 +21,9 @@ from logic.output_handler import (
 )
 
 from logic.database import get_molecule_from_sqlite, get_summary_statistics
+
+# カスタムCSSを適用
+load_css("config/styles.css")
 
 # データベースパス
 db_path = "data/energy_db.sqlite"

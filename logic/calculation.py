@@ -10,6 +10,7 @@ pySCFの計算を実行して、実行した結果を出力させる部分
 出てきたファイルの解析については、output_handler.pyで数値の変換し、visualization.pyでグラフなどに変換する。
 """
 
+# ライブラリーのimport
 import os
 import json
 from datetime import datetime
@@ -74,7 +75,6 @@ basis_set_options = [
     "pcseg-2"
 ]
 
-
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
 
 # 定数を自前で定義
@@ -117,7 +117,7 @@ def save_log(compound_name, data):
 
     return directory  # ディレクトリパスを返す
 
-
+# ログファイルの名前付け
 def get_sequential_filename(directory, theory, basis_set, opt_theory="none", opt_basis_set="none", 
                             extension="molden", purpose=None, charge=0, spin=0):
     """
@@ -145,7 +145,7 @@ def get_sequential_filename(directory, theory, basis_set, opt_theory="none", opt
     new_filename = f"{filename_base}_{new_index}.{extension}"
     return os.path.join(directory, new_filename)
 
-
+# pyscfでの設定
 def setup_molecule(atom_input, basis_set, charge, spin, symmetry=False):
     """
     Setup PySCF Molecule with optional automatic correction of spin.
@@ -161,6 +161,7 @@ def setup_molecule(atom_input, basis_set, charge, spin, symmetry=False):
 
     return mol
 
+# パラメーター抽出
 def extract_mol_mf_params(mol, mf):
     """
     mol, mfオブジェクトからログ用のパラメータを抽出するユーティリティ関数
@@ -190,8 +191,28 @@ def extract_float_from_dict(d, keys):
                 continue
     return None
 
-# 1. 1点計算
+# 1原子かどうかを判定する関数
+def is_single_atom(xyz: str, charge: int, spin: int) -> bool:
+    """
+    与えられたxyz形式の構造が1原子のみかを判定する。
+    PySCFの分子オブジェクトを構築し、原子数を確認する。
 
+    Parameters:
+        xyz (str): XYZ形式の原子座標。
+        charge (int): 分子全体の電荷。
+        spin (int): Nalpha - Nbeta （2S ではない）で指定するスピン。
+
+    Returns:
+        bool: 原子数が1つならTrue、それ以外はFalse。
+    """
+    try:
+        mol = gto.M(atom=xyz, basis='sto-3g', charge=charge, spin=spin)
+        return mol.natm == 1
+    except Exception as e:
+        print(f"[ERROR] Failed to parse molecule in is_single_atom(): {e}")
+        return False
+
+# 1. 1点計算
 def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory, charge, spin, opt_theory=None, opt_basis_set=None, solvent_model=None, eps=None, symmetry=False):
     """
     Execute a quantum chemistry calculation.
@@ -314,9 +335,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
         save_log(compound_name, log_entry)
         raise RuntimeError(f"Calculation failed: {e}")
 
-
 # 2. 構造最適化計算
-
 def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theory,
                               charge, spin, solvent_model=None, eps=None,
                               symmetry=False, conv_params=None, maxsteps=100):
@@ -424,7 +443,6 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
         raise RuntimeError(f"Optimization failed: {e}")
 
 # 3. 振動計算
-
 def calculate_vibrational_frequencies(atom_input: str, theory: str, basis_set: str, charge, spin,
                                        opt_theory=None, opt_basis_set=None,
                                         solvent_model=None, eps=None, symmetry=False,
@@ -730,7 +748,6 @@ def compute_electric_properties(mol, basis_set='6-31g', density_g_cm3=1.0, slope
         "dielectric_constant_pred": eps_pred,
     }
 
-
 # IP計算
 def calculate_ionization_potential(
     mol, theory, basis, optimize_neutral, optimize_radical_cation,
@@ -950,7 +967,8 @@ def calculate_ionization_potential(
             log_entry["error"] = str(e)
             save_log(compound_name, log_entry)
         raise RuntimeError(f"Ionization potential calculation failed: {e}")
-# ...existing code...
+
+# 溶媒和エネルギー
 def calculate_solvation_energy(
     mol, theory, basis,
     optimize_gas=False, optimize_solvent=False,
@@ -1126,5 +1144,82 @@ def calculate_solvation_energy(
         "chkfile_solvent": chkfile_solvent,
     }
 
+# 連続計算
+def compute_molecule_properties(
+    name, smiles, xyz, charge, spin, conv_params,
+    theory="B3LYP", basis_set="def2-SVP",
+    solvent_model=None, eps=None, maxsteps=100,
+    optimize_with_qc=True  
+):
+    """
+    任意の分子（中性またはラジカル）に対して、構造最適化および振動計算を行い、
+    Gibbs自由エネルギーと振動情報を含む辞書を返す。
+    1原子系の場合はSCFエネルギーのみを返す。
+    optimize_with_qc: Trueなら量子化学計算による構造最適化を行う
+    """
 
+    if is_single_atom(xyz, charge=charge, spin=spin):
+        print(f"[INFO] {name} is a single-atom molecule. Skipping optimization and frequency.")
+        energy, _ = run_quantum_calculation(
+            compound_name=name,
+            smiles=smiles,
+            atom_input=xyz,
+            basis_set=basis_set,
+            theory=theory,
+            charge=charge,
+            spin=spin,
+            solvent_model=solvent_model,
+            eps=eps,
+            symmetry=False
+        )
+        return {
+            'G_tot': energy,
+            'frequencies': {},
+            'thermo_info': {'E_scf_only': energy}
+        }
 
+    if optimize_with_qc:
+        print(f"[INFO] Running geometry optimization for {name} with SMILES: {smiles}")
+        xyz_opt = run_geometry_optimization(
+            compound_name=name,
+            smiles=smiles,
+            atom_input=xyz,
+            theory=theory,
+            basis_set=basis_set,
+            charge=charge,
+            spin=spin,
+            solvent_model=solvent_model,
+            eps=eps,
+            conv_params=conv_params,
+            maxsteps=maxsteps
+        )
+    else:
+        print(f"[INFO] Skipping geometry optimization for {name} (optimize_with_qc=False)")
+        xyz_opt = xyz
+
+    print(f"[INFO] Running vibrational frequency calculation for {name} with SMILES: {smiles}")
+    vib_result = calculate_vibrational_frequencies(
+        atom_input=xyz_opt,
+        theory=theory,
+        basis_set=basis_set,
+        charge=charge,
+        spin=spin,
+        solvent_model=solvent_model,
+        eps=eps,
+        compound_name=name,
+        smiles=smiles
+    )
+
+    G_tot = vib_result['thermo_info'].get('G_tot', None)
+    thermo = vib_result['thermo_info']
+    frequencies = vib_result['frequencies']
+    modes = vib_result.get('modes', None)
+    
+
+    return {
+        'G_tot': G_tot,
+        'thermo_info': thermo,
+        'frequencies': frequencies,
+        'mol': vib_result['mol'],
+        'frequencies': vib_result.get('frequencies', {}),
+    }

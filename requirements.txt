@@ -1,7 +1,7 @@
 streamlit
 watchdog
 matplotlib
-rdkit
+rdkit==2024.9.6
 pyscf
 geometric
 pyberny

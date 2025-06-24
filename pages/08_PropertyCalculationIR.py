@@ -4,6 +4,8 @@ IRの予測
 """
 
 import streamlit as st
+from utils.module import load_css
+
 import matplotlib.pyplot as plt
 import sys
 import os
@@ -19,6 +21,9 @@ from pyscf import gto, dft, lib
 from pyscf.hessian import rks
 from pyscf.prop import infrared
 from pyscf.hessian import thermo
+
+# カスタムCSSを適用
+load_css("config/styles.css")
 
 st.title("PySCF IR計算")
 

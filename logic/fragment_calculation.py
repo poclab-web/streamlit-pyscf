@@ -10,7 +10,34 @@ from logic.calculation import (
 )
 import logging
 
+from rdkit import Chem
 
+## pka
+
+def deprotonation_iterator(smiles):
+    mol = Chem.MolFromSmiles(smiles)
+    mol = Chem.AddHs(mol)
+
+    for atom in mol.GetAtoms():
+        if atom.GetAtomicNum() == 1:  # Hydrogen
+            neighbor = atom.GetNeighbors()[0]
+            parent_idx = neighbor.GetIdx()
+            h_idx = atom.GetIdx()
+
+            rw_mol = Chem.RWMol(mol)
+            rw_mol.RemoveAtom(h_idx)
+
+            try:
+                Chem.SanitizeMol(rw_mol)
+                deprot_smiles = Chem.MolToSmiles(rw_mol)
+                yield pd.Series({
+                    "parent_atom_index": parent_idx,
+                    "deprotonated_smiles": deprot_smiles
+                })
+            except:
+                continue
+
+## BDE 
 def fragment_iterator(smiles, skip_warnings=False, skip_rings=False):
 
     mol_stereo = enumerate_stereocenters(smiles)

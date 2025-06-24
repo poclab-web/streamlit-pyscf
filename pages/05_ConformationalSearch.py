@@ -3,11 +3,15 @@
 """
 
 import streamlit as st
+from utils.module import load_css
+
 import py3Dmol  # 3D可視化用ライブラリ
 import stmol
 import streamlit.components.v1 as components  # StreamlitでHTML埋め込み用
 from logic.molecule_handler import MoleculeHandler  # MoleculeHandlerクラスをインポート
 
+# カスタムCSSを適用
+load_css("config/styles.css")
 
 # Function to display 3D structure using py3Dmol
 def show_3d_structure(mol_block):

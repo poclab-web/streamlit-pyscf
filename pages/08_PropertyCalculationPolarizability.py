@@ -4,6 +4,7 @@ TODO: 改修中
 """
 
 import streamlit as st
+from utils.module import load_css
 
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdMolDescriptors
@@ -15,6 +16,10 @@ import os
 from logic.data_loader import list_chk_files, load_mo_info
 from logic.calculation import compute_electric_properties
 from logic.molecule_handler import MoleculeHandler
+
+# カスタムCSSを適用
+load_css("config/styles.css")
+
 
 st.title("PySCF compute_electric_properties")
 
