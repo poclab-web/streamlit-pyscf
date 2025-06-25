@@ -54,26 +54,37 @@ theory_options = [
 ]
 # 基底関数の選択肢
 basis_set_options = [
-    "sto-3g",          # 最小基底
-    "3-21g",           # 教育用途によく使われる軽量基底
-    "6-31g",           # 二重ζ基底（DZ）
-    "6-31g*",          # +分極関数（重原子にd軌道）
-    "6-31g**",         # +分極関数（全原子にd,p軌道）
-    "6-31+g**",        # +分散関数（陰イオン・励起状態向け）
-    "6-31++g**",       # +分散関数×2（水素にも分散関数）
-    "cc-pVDZ",         # correlation-consistent (Dunning系)
-    "cc-pVTZ",
-    "cc-pVQZ",         # より高精度なDunning系基底
-    "aug-cc-pVDZ",     # 分散関数付き（augmented）
+    # Pople系列
+    "sto-3g",            # 最小基底（教育・初学者向け）
+    "3-21g",             # 教育用途によく使われる軽量基底
+    "6-31g",             # 二重ζ基底（DZ）
+    "6-31g*",            # +分極関数（重原子にd軌道）
+    "6-31g**",           # +分極関数（全原子にd,p軌道）
+    "6-31+g**",          # +拡散関数（陰イオン・励起状態向け）
+    "6-31++g**",         # +拡散関数×2（水素にも拡散関数）
+    # Dunning系列
+    "cc-pVDZ",           # Dunning系列、二重ζ（DFT・MP2向け）
+    "cc-pVTZ",           # 三重ζ（より精度重視）
+    "cc-pVQZ",           # 四重ζ（高精度、基準計算向け）
+    "aug-cc-pVDZ",       # +拡散関数（アニオン・励起状態）
     "aug-cc-pVTZ",
-    "aug-cc-pVQZ",     # Rydberg状態・励起状態向けのaugmented四重ζ
-    "def2-SVP",        # def2 系（Karlsruhe基底）
-    "def2-SV(P)",      # 軽量版 def2（H, C, N, O 向け）
-    "def2-TZVP",
-    "def2-QZVP",       # 四重ζ（QZ）で高精度計算用
-    "pcseg-1",         # Jensen の polarization consistent segmented basis
-    "pcseg-2"
+    "aug-cc-pVQZ",       # 拡散付き四重ζ（Rydberg状態、TDDFT）
+    # def2 系列（Karlsruhe basis sets）
+    "def2-SVP",          # Karlsruhe系、軽量＋分極（実用的な初期計算）
+    "def2-SVPD",         # +拡散関数（アニオン向け）
+    "def2-SV(P)",        # 軽量版 def2（H, C, N, O 向け）
+    "def2-TZVP",         # triple-ζ 分極付き（標準的精度）
+    "def2-TZVPD",        # +拡散関数（高精度アニオン向け）
+    "def2-QZVP",         # quadruple-ζ（基準計算向け）
+    # Jensen 系列（pcseg-1 など）
+    "pcseg-1",           # Jensen系、分極一貫性あり（軽量）
+    "pcseg-2",           # 中等精度（triple-ζ相当）
+    "pcseg-3",           # triple-ζ精度（高精度計算用）
+    # その他　特殊/補助的基底
+    "ma-def2-SVP",       # 最小限拡張付きdef2-SVP（高速化重視）
+    "cc-pwCVTZ",         # コアバレンス相関考慮（遷移金属・重原子）
 ]
+
 
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
 
@@ -280,6 +291,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                 elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
                     mf = dft.RKS(mol)
                     mf.xc = theory
+                    mf.grids.level = 5  # より高密度なグリッドに設定
                 elif theory == "B3LYPD3":
                     mf = dft.RKS(mol)
                     mf.xc = "B3LYP"
@@ -297,6 +309,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                 elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
                     mf = dft.UKS(mol)
                     mf.xc = theory
+                    mf.grids.level = 5  # より高密度なグリッドに設定
                 elif theory == "B3LYPD3":
                     mf = dft.UKS(mol)
                     mf.xc = "B3LYP"
@@ -385,10 +398,12 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
             elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
                 mf = dft.RKS(mol)
                 mf.xc = theory
+                mf.grids.level = 5  # より高密度なグリッドに設定
             elif theory == "B3LYPD3":
                 mf = dft.RKS(mol)
                 mf.xc = "B3LYP"
                 mf = d3.energy(mf)  # D3分散補正を付加
+                mf.grids.level = 5  # より高密度なグリッドに設定
             else:
                 raise ValueError(f"Unsupported theory: {theory}")       
         else:
@@ -401,10 +416,12 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
             elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
                 mf = dft.UKS(mol)
                 mf.xc = theory
+                mf.grids.level = 5  # より高密度なグリッドに設定
             elif theory == "B3LYPD3":
                 mf = dft.UKS(mol)
                 mf.xc = "B3LYP"
                 mf = d3.energy(mf)
+                mf.grids.level = 5  # より高密度なグリッドに設定
         
         # 溶媒モデル
         if solvent_model is not None:
@@ -502,10 +519,12 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str, basis_set: s
             elif theory_upper in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D']:
                 mf = dft.RKS(mol)
                 mf.xc = theory.lower()
+                mf.grids.level = 5  # より高密度なグリッドに設定
                 hess_class = rks.Hessian
             elif theory_upper == "B3LYPD3":
                 mf = dft.RKS(mol)
                 mf.xc = "b3lyp"
+                mf.grids.level = 5  # より高密度なグリッドに設定
                 mf = d3.energy(mf)
                 hess_class = rks.Hessian
         else:
@@ -515,10 +534,12 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str, basis_set: s
             elif theory_upper in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D']:
                 mf = dft.UKS(mol)
                 mf.xc = theory.lower()
+                mf.grids.level = 5  # より高密度なグリッドに設定
                 hess_class = uks.Hessian
             elif theory_upper == "B3LYPD3":
                 mf = dft.UKS(mol)
                 mf.xc = "b3lyp"
+                mf.grids.level = 5  # より高密度なグリッドに設定
                 mf = d3.energy(mf)
                 hess_class = uks.Hessian
 
@@ -1148,6 +1169,7 @@ def calculate_solvation_energy(
 def compute_molecule_properties(
     name, smiles, xyz, charge, spin, conv_params,
     theory="B3LYP", basis_set="def2-SVP",
+    opt_theory=None, opt_basis_set=None,
     solvent_model=None, eps=None, maxsteps=100,
     optimize_with_qc=True  
 ):
@@ -1202,6 +1224,8 @@ def compute_molecule_properties(
         atom_input=xyz_opt,
         theory=theory,
         basis_set=basis_set,
+        opt_theory=opt_theory, 
+        opt_basis_set=opt_basis_set,
         charge=charge,
         spin=spin,
         solvent_model=solvent_model,

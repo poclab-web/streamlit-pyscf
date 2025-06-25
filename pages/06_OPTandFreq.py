@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from rdkit import Chem
 from rdkit.Chem import AllChem
+from rdkit.Chem import inchi  # 追加
 
 from config.config import conv_preset_values, solvent_models, solvents_data, solvents_file
 
@@ -89,14 +90,17 @@ with st.expander("Setting calculation conditions"):
 # DBの検索有無
 # 分子情報の標準化（入力が変わるたびに都度生成）
 handler = MoleculeHandler(atom_input, input_type=input_type.lower())
-smiles = Chem.MolToSmiles(handler.mol, isomericSmiles=True, canonical=True)
-compound_name = Chem.MolToInchiKey(handler.mol)
+mol = handler.mol
+smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+inchi_str = inchi.MolToInchi(mol)
+inchikey_str = inchi.InchiToInchiKey(inchi_str)
+compound_name = inchikey_str
 directory = os.path.join("data", compound_name)
 os.makedirs(directory, exist_ok=True)
 
 # ここで既存データを検索
 existing = get_molecule_from_sqlite(
-    smiles=smiles,
+    inchikey=inchikey_str,
     method=theory,
     basis=basis,
     spin=spin,
@@ -109,7 +113,7 @@ existing = get_molecule_from_sqlite(
 )
 
 stable_existing = get_stable_molecule_from_sqlite(
-    smiles=smiles,
+    inchikey=inchikey_str,
     method=theory,
     basis=basis,
     spin=spin,
@@ -156,6 +160,27 @@ if st.button("Calculate"):
             freq_array = list(itertools.chain.from_iterable(freq_array))
         if hasattr(freq_array, "tolist"):
             freq_array = freq_array.tolist()
+
+        # freq_arrayの前処理
+        def to_float_real(val):
+            # 文字列ならcomplexに変換
+            if isinstance(val, str):
+                try:
+                    val = complex(val.replace(" ", ""))
+                except Exception:
+                    return float("nan")
+            if isinstance(val, complex):
+                return float(val.real)
+            return float(val)
+
+        # --- 振動数のフラット化とfloat変換 ---
+        if any(isinstance(f, (list, tuple, np.ndarray)) for f in freq_array):
+            import itertools
+            freq_array = list(itertools.chain.from_iterable(freq_array))
+        if hasattr(freq_array, "tolist"):
+            freq_array = freq_array.tolist()
+        freq_array = [to_float_real(f) for f in freq_array]  # ← ここで全要素をfloat化
+
         st.markdown(f"**Number of modes:** {len(freq_array)}")
         freq_df = pd.DataFrame({
             "Frequency (cm⁻¹)": [float(f"{freq:.2f}") for freq in freq_array]
@@ -177,22 +202,12 @@ if st.button("Calculate"):
         # ここから下は「計算を実行」する既存の処理
         with st.spinner("Calculating vibrational frequencies..."):
             try:
-                # 分子を処理
                 handler = MoleculeHandler(atom_input, input_type=input_type.lower())
-
-                if apply_force_field:
-                    if handler.mol.GetNumAtoms() > 2:
-                        handler.generate_conformers(
-                            num_conformers=num_conformers,
-                            forcefield=force_field
-                        )
-                handler.keep_lowest_energy_conformer()
-
-                # 化合物名を取得
-                compound_name = Chem.MolToInchiKey(handler.mol)
-                smiles = Chem.MolToSmiles(handler.mol, isomericSmiles=True, canonical=True)
-
-                # ディレクトリの作成
+                mol = handler.mol
+                inchi_str = inchi.MolToInchi(mol)
+                inchikey_str = inchi.InchiToInchiKey(inchi_str)
+                smiles = Chem.MolToSmiles(mol, isomericSmiles=True, canonical=True)
+                compound_name = inchikey_str
                 directory = os.path.join("data", compound_name)
                 os.makedirs(directory, exist_ok=True)
 
@@ -218,10 +233,12 @@ if st.button("Calculate"):
 
                 pyscf_input_G = handler.to_pyscf_input()
 
-                results = compute_molecule_properties(compound_name, smiles, pyscf_input_G, charge, spin, conv_params, theory, basis, solvent_model=solvent_model, eps=eps, maxsteps=maxsteps, optimize_with_qc=optimize_with_qc)
+                results = compute_molecule_properties(
+                    compound_name, smiles, pyscf_input_G, charge, spin, conv_params, theory, basis,
+                    solvent_model=solvent_model, eps=eps, maxsteps=maxsteps, optimize_with_qc=optimize_with_qc
+                )
                 frequencies = results['frequencies']
                 thermo_info = results['thermo_info']
-
             except Exception as e:
                 import traceback
                 st.error(f"An error occurred: {e}")
@@ -240,17 +257,22 @@ if st.button("Calculate"):
                 freq_array = list(itertools.chain.from_iterable(freq_array))
             if hasattr(freq_array, "tolist"):
                 freq_array = freq_array.tolist()
-            num_imaginary = sum(1 for f in freq_array if f < 0)
+            # 修正: complex型対応
+            num_imaginary = sum(1 for f in freq_array if (f.real if isinstance(f, complex) else f) < 0)
 
             # .chkファイルのパス（例: Gaussian計算で保存した場合）
             chk_file_path = os.path.join(directory, f"{compound_name}.chk")
             if not os.path.isfile(chk_file_path):
                 chk_file_path = None  # ファイルがなければNone
 
+            # 修正: complex型をfloatに変換して保存
+            freq_array_to_save = [float(f.real if isinstance(f, complex) else f) for f in freq_array]
+
             # データベースへ保存
             try:
                 insert_molecule_with_frequencies(
-                    smiles=smiles,
+                    inchi=inchi_str,
+                    inchikey=inchikey_str,
                     g_tot=thermo_info["G_tot"][0],  
                     zpe=thermo_info["ZPE"][0],      
                     method=theory,
@@ -261,7 +283,7 @@ if st.button("Calculate"):
                     dielectric=eps,
                     temperature=298.15,
                     pressure=1.0,
-                    frequencies=freq_array,
+                    frequencies=freq_array_to_save,  # ←ここを修正
                     num_imaginary=num_imaginary,
                     chk_file_path=chk_file_path,
                     db_path="data/energy_db.sqlite"
@@ -329,7 +351,7 @@ if st.button("Calculate"):
         else:
             # 既存データの確認
             existing = get_molecule_from_sqlite(
-                smiles=smiles,
+                inchikey=inchikey_str,
                 method=theory,
                 basis=basis,
                 spin=spin,
@@ -392,7 +414,6 @@ if st.button("Calculate"):
                 """)
 
                 st.info(f"Results saved in: {compound_name}")
-
                 # --- Detailed View ---
                 with st.expander("🔍 Full Thermodynamic Details"):
                     df = {
