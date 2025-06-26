@@ -84,6 +84,7 @@ def mol_to_image(smiles):
 
 st.title("pKa Calculator in water")
 st.markdown("**SMILESから脱プロトン化候補を選択し、量子化学計算条件を指定してpKa(水中)を計算**")
+st.warning("精度は改善余地あります。検討中です")
 
 st.divider()
 
