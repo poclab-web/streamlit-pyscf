@@ -417,7 +417,7 @@ if "deprot_candidates" in st.session_state:
 
                 pyscf_input_ref = handler_ref.to_pyscf_input()
                 result_ref = compute_molecule_properties(
-                    name=inchi_str_ref,
+                    name=inchikey_str_ref,
                     smiles=ref_smiles,
                     xyz=pyscf_input_ref,
                     theory=theory,
@@ -493,7 +493,7 @@ if "deprot_candidates" in st.session_state:
                     handler_ref_anion.keep_lowest_energy_conformer()
                 pyscf_input_ref_anion = handler_ref_anion.to_pyscf_input()
                 result_ref_anion = compute_molecule_properties(
-                    name=inchi_str_ref_anion,
+                    name=inchikey_str_ref_anion,
                     smiles=ref_anion_smiles,
                     xyz=pyscf_input_ref_anion,
                     theory=theory,
