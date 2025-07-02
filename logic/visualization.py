@@ -28,7 +28,7 @@ import json
 import io
 import numpy as np
 import pandas as pd
-
+from scipy.stats import norm
 import streamlit as st
 
 
@@ -112,28 +112,9 @@ def plot_uv_spectrum(
     n_points=2000,
     ax=None
 ):
-    """
-    UVスペクトル（ガウスブロード＋スティック）を描画する
 
-    Parameters
-    ----------
-    wavelengths : list of tuple
-        (波長[nm], 振動子強度) のリスト
-    wavelength_min : float
-        表示する波長の最小値
-    wavelength_max : float
-        表示する波長の最大値
-    width : float
-        ガウス幅（標準偏差, nm）
-    n_points : int
-        x軸の分割数
-    ax : matplotlib.axes.Axes or None
-        描画先。Noneなら新規作成
-    """
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from scipy.stats import norm
-
+    # Noneを除外
+    wavelengths = [(w, o) for w, o in wavelengths if w is not None and o is not None]
     wavelengths = sorted(wavelengths, key=lambda x: x[0])
     filtered = [(w, o) for w, o in wavelengths if wavelength_min <= w <= wavelength_max]
 
@@ -174,6 +155,8 @@ def find_allowed_excited_state_from_lists(excitation_energies, oscillator_streng
         (state_index, energy_in_eV, oscillator_strength) or (None, None, None)
     """
     for i, (e, f) in enumerate(zip(excitation_energies, oscillator_strengths)):
+        f = float(f)  # オシレーター強度をfloatに変換
+        e = float(e)  # エネルギーをfloatに変換
         if f >= threshold:
             return i + 1, e, f  # 1-indexed
     return None, None, None
@@ -181,16 +164,6 @@ def find_allowed_excited_state_from_lists(excitation_energies, oscillator_streng
 def prepare_excited_states_table(excitation_energies, oscillator_strengths, threshold=0.01):
     """
     励起状態のリストをDataFrameに整形し、有意な遷移状態を選定する。
-
-    Parameters:
-        excitation_energies: List[float]
-        oscillator_strengths: List[float]
-        threshold: float
-
-    Returns:
-        df: pd.DataFrame
-        selected_state: dict or None
-            例: {"index": 3, "energy": 3.02, "strength": 0.045}
     """
     df = pd.DataFrame({
         "State": list(range(1, len(excitation_energies) + 1)),
@@ -199,8 +172,13 @@ def prepare_excited_states_table(excitation_energies, oscillator_strengths, thre
     })
 
     for i, (e, f) in enumerate(zip(excitation_energies, oscillator_strengths)):
-        if f >= threshold:
-            selected_state = {"index": i + 1, "energy": e, "strength": f}
+        try:
+            f_value = float(f)
+            e_value = float(e)
+        except Exception:
+            continue
+        if f_value >= threshold:
+            selected_state = {"index": i + 1, "energy": e_value, "strength": f_value}
             return df, selected_state
 
     return df, None

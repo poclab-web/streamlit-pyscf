@@ -23,6 +23,8 @@ from logic.output_handler import (
 # カスタムCSSを適用
 load_css("config/styles.css")
 
+# dataフォルダ内のフォルダ名を取得して表示
+data_path = "data"  # dataフォルダのパス
 
 st.subheader("📊 計算済みchkファイルの検索")
 # chkファイルの検索

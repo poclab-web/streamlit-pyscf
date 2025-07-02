@@ -219,7 +219,6 @@ with st.expander("UVスペクトル予測の計算方法と参考文献を表示
 # --- ここから追加: 既存データで可視化 ---
 if use_db_data_excited and selected_excited is not None:
 
-
     excitation_energies = selected_excited.get("excited_energies", None)
     oscillator_strengths = selected_excited.get("oscillator_strengths", None)
 
@@ -227,10 +226,31 @@ if use_db_data_excited and selected_excited is not None:
         st.error("データベースに励起エネルギーまたは振動子強度が保存されていません。")
         st.stop()
 
+    if type(excitation_energies) == str:
+        try:
+            excitation_energies = eval(excitation_energies)  # 文字列をリストに変換
+        except Exception as e:
+            st.write(type(excitation_energies))
+    
+    if type(oscillator_strengths) == str:
+        try:
+            oscillator_strengths = eval(oscillator_strengths)  # 文字列をリ
+        except Exception as e:
+            st.write(type(oscillator_strengths))
+
     # 波長と振動子強度の計算
     wavelengths = []
-    for i, energy in enumerate(excitation_energies):
-        wavelength = 1240 / (energy * 27.2114)  # エネルギー (au) を nm に変換
+    energies_list = excitation_energies
+
+    if isinstance(excitation_energies, (list, np.ndarray)) and len(excitation_energies) > 0 and isinstance(excitation_energies[0], (list, np.ndarray)):
+        energies_list = excitation_energies[0]  # 二重リストの場合は一次元に
+
+    for i, energy in enumerate(energies_list):
+        try:
+            energy_float = float(energy)
+            wavelength = 1240 / (energy_float * 27.2114)  # エネルギー (au) を nm に変換
+        except Exception as e:
+            wavelength = None
         osc = oscillator_strengths[i] if i < len(oscillator_strengths) else 0
         wavelengths.append((wavelength, osc))
 
@@ -253,6 +273,7 @@ if use_db_data_excited and selected_excited is not None:
         # 最初に有意な遷移（f >= 0.01）を強調
         f_input = st.number_input("有意な振動子強度の閾値 (f ≥ )", min_value=0.0, max_value=1.0, value=0.01, step=0.01)
         for i, (e, f) in enumerate(zip(excitation_energies, oscillator_strengths)):
+            f = float(f) if isinstance(f, (int, float)) else 0.0
             if f >= f_input:
                 st.success(f"有意な最初の一重項遷移(S1 energy): State {i+1}, Energy = {e:.2f} eV, f = {f_input:.4f}")
                 break
@@ -295,10 +316,21 @@ if use_db_data_excited and selected_excited is not None:
             st.dataframe(df)
 
         # Tripletは通常 f ≈ 0 のため、エネルギーのみ報告
-        t1_energy = excitation_energies[0]
+
+
+        import ast  # ファイル冒頭のimportに追加
+
+        # Tripletは通常 f ≈ 0 のため、エネルギーのみ報告
+        energies = excitation_energies
+        if isinstance(energies, str):
+            try:
+                energies = ast.literal_eval(energies)
+            except Exception:
+                st.error("励起エネルギーのデータ形式が不正です。")
+                st.stop()
+        t1_energy = float(energies[0])
         st.success(f"三重項の最低励起状態 T₁ のエネルギー: {t1_energy:.2f} eV")
         st.info("三重項状態は通常スピン禁制遷移のため、オシレーター強度は表示されません。")
-
 
     st.stop()  # 以降の計算処理はスキップ
 
@@ -392,17 +424,19 @@ if st.button("計算を開始"):
         except Exception as e:
             st.error(f"データベースへの保存に失敗しました: {e}")
 
+    excited_energies=energies.tolist()
+    oscillator_strengths=oscillator_strengths.tolist()
 
-    # データ処理
-    df, selected_state = prepare_excited_states_table(energies.tolist(), oscillator_strengths.tolist(), threshold=0.01)
+    # 波長と振動子強度の計算
+    df, selected_state = prepare_excited_states_table(excited_energies, oscillator_strengths, threshold=0.01)
 
     # 表示
     st.write("### 励起状態リスト")
     # ▼ 表形式の準備（singlet の場合のみオシレーター強度付き）
     if excited_spin == "singlet":
         df = pd.DataFrame({
-            "State": list(range(1, len(excitation_energies) + 1)),
-            "Energy (eV)": excitation_energies,
+            "State": list(range(1, len(excited_energies) + 1)),
+            "Energy (eV)": excited_energies,
             "Oscillator Strength": oscillator_strengths
         })
 
@@ -411,8 +445,8 @@ if st.button("計算を開始"):
 
         # 最初に有意な遷移（f >= 0.01）を強調
         f_input = st.number_input("有意な振動子強度の閾値 (f ≥ )", min_value=0.0, max_value=1.0, value=0.01, step=0.01)
-        for i, (e, f) in enumerate(zip(excitation_energies, oscillator_strengths)):
-            if f_value >= f_input:
+        for i, (e, f) in enumerate(zip(excited_energies, oscillator_strengths)):
+            if f >= f_input:
                 st.success(f"有意な最初の一重項遷移(S1 energy): State {i+1}, Energy = {e:.2f} eV, f = {f_input:.4f}")
                 break
         else:
@@ -420,8 +454,13 @@ if st.button("計算を開始"):
 
         # 波長と振動子強度の計算
         wavelengths = []
-        for i, energy in enumerate(energies):
-            wavelength = 1240 / (energy * 27.2114)  # エネルギー (au) を nm に変換
+
+        for i, energy in enumerate(excited_energies):
+            try:
+                energy_float = float(energy)
+                wavelength = 1240 / (energy_float * 27.2114)  # エネルギー (au) を nm に変換
+            except Exception as e:
+                wavelength = None
             wavelengths.append((wavelength, oscillator_strengths[i]))
 
         # DataFrame化
@@ -436,15 +475,15 @@ if st.button("計算を開始"):
 
     else:
         df = pd.DataFrame({
-            "State": list(range(1, len(excitation_energies) + 1)),
-            "Energy (eV)": excitation_energies,
+            "State": list(range(1, len(excited_energies) + 1)),
+            "Energy (eV)": excited_energies,
         })
 
         with st.expander("励起状態の詳細を表示", expanded=False):
             st.dataframe(df)
 
         # Tripletは通常 f ≈ 0 のため、エネルギーのみ報告
-        t1_energy = excitation_energies[0]
+        t1_energy = excited_energies[0]
         st.success(f"三重項の最低励起状態 T₁ のエネルギー: {t1_energy:.2f} eV")
         st.info("三重項状態は通常スピン禁制遷移のため、オシレーター強度は表示されません。")
 
@@ -454,7 +493,7 @@ if st.button("計算を開始"):
         'wavelengths': wavelengths,
         'oscillator_strengths': oscillator_strengths,
         'td': td,
-        'energies': energies,
+        'energies': excited_energies,
         'mf': mf,
         # 必要なら他のデータも
     }
