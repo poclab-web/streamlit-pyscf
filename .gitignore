@@ -182,3 +182,7 @@ data
 .cube
 .molden
 _temp.cube
+
+# macOS
+DS_Store
+*.DS_Store

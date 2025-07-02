@@ -6,32 +6,33 @@
 
 ```
 streamlit-pyscf/
-├── config/                         # 計算に使用する定数を保存する場所
-├── controllers/                    # 複数計算を制御する場所
-│   └── fragment_calculation.py     # BDEやpKaなどフラグメント計算用の関数
-├── data                            # 計算したデータが保存される場所
+├── config/                             # 計算に使用する定数を保存する場所
+├── controllers/                        # 複数計算を制御する場所
+│   └── excited_state_calculation.py    # BDEやpKaなどフラグメント計算用の関数
+│   └── fragment_calculation.py         # 励起状態計算用の関数
+├── data                                # 計算したデータが保存される場所
 ├── docs/
-│   └── architecture.md             # この設計書(ディレクトリ構成などを記載)
-├── jobs/                           # 未計算ジョブ
-│   └── pending_jobs.csv            # Excel等で編集可能なCSVで計算したい分子とパラメータの一覧が作成される
+│   └── architecture.md                 # この設計書(ディレクトリ構成などを記載)
+├── jobs/                               # 未計算ジョブ
+│   └── pending_jobs.csv                # Excel等で編集可能なCSVで計算したい分子とパラメータの一覧が作成される
 ├── logic/
-│   └── calculation.py              # pyscfでの量子化学計算の主要なロジック
-│   └── data_loader.py              # データの読み込み用ユーティリティ
-│   └── database.py                 # 計算結果などをSQLデータベースに保存する関数
-│   └── logger.py                   # ログ出力・管理用のユーティリティ
-│   └── molecular_handler.py        # RDKitを使った分子情報の変換・入力ファイル作成
-│   └── output_handler.py           # pyscfの出力結果の抽出・整形
-│   └── pubchem_api.py              # pubchemのapiを使って、文献情報へアクセス
-│   └── plot_handler.py             # 結果をstreamlit上に表示するための図作成
+│   └── calculation.py                  # pyscfでの量子化学計算の主要なロジック
+│   └── data_loader.py                  # データの読み込み用ユーティリティ
+│   └── database.py                     # 計算結果などをSQLデータベースに保存する関数
+│   └── logger.py                       # ログ出力・管理用のユーティリティ
+│   └── molecular_handler.py            # RDKitを使った分子情報の変換・入力ファイル作成
+│   └── output_handler.py               # pyscfの出力結果の抽出・整形
+│   └── pubchem_api.py                  # pubchemのapiを使って、文献情報へアクセス
+│   └── plot_handler.py                 # 結果をstreamlit上に表示するための図作成
 │
-├── pages/                          # streamlitアプリの各ページ Docstringに内容を記載
-├── utils/                          # streamlit表示や共通処理のユーティリティ
-├── .gitignore                      # Git管理対象外ファイル設定
-├── ComputationalChemistryTool.py   # streamlitアプリのエントリポイント
-├── main.py                         # コマンドラインやバッチ処理で分子計算を実行するためのエントリポイント
-├── packages.txt                    # 使用パッケージ一覧
-├── README.txt                      # プロジェクト概要
-├── requirements.txt                # Python依存パッケージ
+├── pages/                              # streamlitアプリの各ページ Docstringに内容を記載
+├── utils/                              # streamlit表示や共通処理のユーティリティ
+├── .gitignore                          # Git管理対象外ファイル設定
+├── ComputationalChemistryTool.py       # streamlitアプリのエントリポイント
+├── main.py                             # コマンドラインやバッチ処理で分子計算を実行するためのエントリポイント
+├── packages.txt                        # 使用パッケージ一覧
+├── README.txt                          # プロジェクト概要
+├── requirements.txt                    # Python依存パッケージ
 ```
 
 ## 主なモジュールと役割
