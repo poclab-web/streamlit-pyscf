@@ -4,9 +4,12 @@ pySCFの計算を実行して、実行した結果を出力させる部分
 1. 1点計算
 2. 構造最適化計算
 3. 振動計算
-4. NMR計算
-5. 励起状態計算（時間依存密度汚関数理論: TD-DFT）
+4. 励起状態計算（時間依存密度汚関数理論: TD-DFT）
+5. NMR計算（化学シフト）
 6. 分子の応答性（極性率や双極子モーメント）
+7. IP計算
+8. 溶媒和エネルギー
+9. 連続計算
 出てきたファイルの解析については、output_handler.pyで数値の変換し、visualization.pyでグラフなどに変換する。
 """
 
@@ -28,7 +31,6 @@ from pyscf.geomopt.berny_solver import optimize
 from pyscf.geomopt import geometric_solver
 from pyscf.hessian import thermo, rhf, rks, uhf, uks # これだけでOK
 
-
 from logic.molecule_handler import MoleculeHandler
 from logic.visualization import generate_cjson
 import dftd3.pyscf as d3  # 追加
@@ -41,16 +43,16 @@ theory_options = [
     "HF",         # ハートリー・フォック法（電子相関なし、基準として有用）
     "MP2",        # 2次の摂動論（電子相関を一部取り込む、post-HF法の入門）
     "B3LYP",      # 汎用ハイブリッド汎関数（DFTで最も広く使われる）
-    # "CAMB3LYP",   # 長距離補正付きB3LYP（励起状態・CT状態に強い）
+    "CAMB3LYP",   # 長距離補正付きB3LYP（励起状態・CT状態に強い）
     "B3LYPD3",    # 分散補正付きB3LYP（ファンデルワールス相互作用に対応）
     "PBE",        # GGA汎関数（計算コストが低く、バルク系や周期系にも適用）
-    # "PBE0",       # ハイブリッド型GGA（構造・スペクトル予測にバランス良）
+    "PBE0",       # ハイブリッド型GGA（構造・スペクトル予測にバランス良）
     # "LC-ωPBE",    # 長距離補正型PBE（電荷移動・Rydberg状態の記述に有効）
     "M06-2X",     # 中長距離相互作用に優れたmeta-GGA（有機分子・非共有相互作用）
-    "B97X-D",     # 分散補正付きハイブリッド汎関数（幅広く信頼性のあるDFT）
+    # "B97X-D",     # 分散補正付きハイブリッド汎関数（幅広く信頼性のあるDFT）
     # "ωB97X-D",    # レンジ分離型＋分散補正（TDDFTや反応経路で高精度）
-    # "TPSS",       # meta-GGA（中庸な精度と計算コスト、構造予測向き）
-    # "SCAN"        # 高精度meta-GGA（近年人気、汎用性が高い）
+    "TPSS",       # meta-GGA（中庸な精度と計算コスト、構造予測向き）
+    "SCAN"        # 高精度meta-GGA（近年人気、汎用性が高い）
 ]
 # 基底関数の選択肢
 basis_set_options = [
@@ -85,12 +87,12 @@ basis_set_options = [
     "cc-pwCVTZ",         # コアバレンス相関考慮（遷移金属・重原子）
 ]
 
-
 hartree_to_cm1 = 219474.63  # 1 Hartree = 219474.63 cm^-1
 
-# 定数を自前で定義
+# 定数を定義
 HARTREE2CM = 219474.6313705
 HARTREE2KCAL = 627.5094740631
+bohr_to_angstrom = 0.52917721092
 
 # ログ保存関数（化合物ごとのフォルダに保存）
 def save_log(compound_name, data):
@@ -285,17 +287,16 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                 if theory == "HF":
                     mf = scf.RHF(mol)
                 elif theory == "MP2":
-                    mf = scf.RHF(mol).run()
-                    from pyscf import mp
+                    mf = scf.RHF(mol).run()                   
                     mf = mp.MP2(mf).run()
-                elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+                elif theory in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]: 
                     mf = dft.RKS(mol)
                     mf.xc = theory
-                    mf.grids.level = 5  # より高密度なグリッドに設定
+                    mf.grids.level = 5
                 elif theory == "B3LYPD3":
                     mf = dft.RKS(mol)
                     mf.xc = "B3LYP"
-                    mf = d3.energy(mf)  # D3分散補正を付加
+                    mf = d3.energy(mf)
                 else:
                     raise ValueError(f"Unsupported theory: {theory}")
             
@@ -304,12 +305,11 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                     mf = scf.UHF(mol)
                 elif theory == "MP2":
                     mf = scf.UHF(mol).run()
-                    from pyscf import mp
                     mf = mp.MP2(mf).run()
-                elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+                elif theory in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]: 
                     mf = dft.UKS(mol)
                     mf.xc = theory
-                    mf.grids.level = 5  # より高密度なグリッドに設定
+                    mf.grids.level = 5
                 elif theory == "B3LYPD3":
                     mf = dft.UKS(mol)
                     mf.xc = "B3LYP"
@@ -393,12 +393,11 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
                 mf = scf.RHF(mol)
             elif theory == "MP2":
                 mf = scf.RHF(mol).run()
-                from pyscf import mp
                 mf = mp.MP2(mf).run()
-            elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+            elif theory in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]:  # ← 追加
                 mf = dft.RKS(mol)
                 mf.xc = theory
-                mf.grids.level = 5  # より高密度なグリッドに設定
+                mf.grids.level = 5
             elif theory == "B3LYPD3":
                 mf = dft.RKS(mol)
                 mf.xc = "B3LYP"
@@ -411,12 +410,11 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
                 mf = scf.UHF(mol)
             elif theory == "MP2":
                 mf = scf.UHF(mol).run()
-                from pyscf import mp
                 mf = mp.MP2(mf).run()
-            elif theory in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+            elif theory in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]:  # ← 追加
                 mf = dft.UKS(mol)
                 mf.xc = theory
-                mf.grids.level = 5  # より高密度なグリッドに設定
+                mf.grids.level = 5
             elif theory == "B3LYPD3":
                 mf = dft.UKS(mol)
                 mf.xc = "B3LYP"
@@ -451,7 +449,7 @@ def run_geometry_optimization(compound_name, smiles, atom_input, basis_set, theo
         log_entry["result"] = {"final_geometry": final_geometry}
         save_log(compound_name, log_entry)
 
-        return final_geometry
+        return final_geometry, mf
 
     except Exception as e:
         log_entry["time"] = "Error_End"
@@ -516,7 +514,7 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str, basis_set: s
             if theory_upper == 'HF':
                 mf = scf.RHF(mol)
                 hess_class = rhf.Hessian
-            elif theory_upper in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D']:
+            elif theory_upper in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D', 'CAMB3LYP']:  # ← 追加
                 mf = dft.RKS(mol)
                 mf.xc = theory.lower()
                 mf.grids.level = 5  # より高密度なグリッドに設定
@@ -531,7 +529,7 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str, basis_set: s
             if theory_upper == 'HF':
                 mf = scf.UHF(mol)
                 hess_class = uhf.Hessian
-            elif theory_upper in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D']:
+            elif theory_upper in ['B3LYP', 'PBE', 'M06-2X', 'B97X-D', 'CAMB3LYP']:  # ← 追加
                 mf = dft.UKS(mol)
                 mf.xc = theory.lower()
                 mf.grids.level = 5  # より高密度なグリッドに設定
@@ -604,6 +602,7 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str, basis_set: s
             f.write(cjson_data)
 
         return {
+            'mf': mf,
             'frequencies': vib_info,
             'thermo_info': thermo_info,
             'mol': mol,
@@ -617,7 +616,125 @@ def calculate_vibrational_frequencies(atom_input: str, theory: str, basis_set: s
             save_log(compound_name, make_json_safe(log_entry))
         raise RuntimeError(f"Vibrational frequency calculation failed: {e}")
 
-# 4. NMR計算（化学シフト）
+# 4. 励起状態計算（時間依存密度汚関数理論: TD-DFT）
+def run_td_dft(compound_name, smiles, atom_input, basis_set, theory,
+               charge, spin, solvent_model=None, eps=None,
+               symmetry=False, nstates=10, opt_theory=None, opt_basis_set=None):        
+    """
+    Perform TD-DFT calculations for excited states using PySCF.
+    """
+    log_entry = {
+        "time": "Start_Time",
+        "timestamp": datetime.now().isoformat(),
+        "compound": compound_name,
+        "smiles": smiles,
+        "calculation_type": "td_dft",
+        "parameters": {
+            "atom_input": atom_input,
+            "basis_set": basis_set,
+            "theory": theory,
+            "charge": charge,
+            "spin": spin,
+            "solvent_model": solvent_model,
+            "dielectric": eps,
+            "symmetry": symmetry,
+            "nstates": nstates
+        }
+    }
+    print(log_entry)        
+    try:
+        directory = save_log(compound_name, log_entry)  
+        chkfile_name = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="chk")
+        molden_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="molden")
+        output_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="out") 
+        cjson_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set, extension="cjson")
+        mol = setup_molecule(atom_input, basis_set, charge, spin, symmetry)
+        print(f"[DEBUG] before setup_molecule: charge={charge}, spin={spin}")
+        print(f"[DEBUG] after setup_molecule: mol.nelectron={mol.nelectron}, mol.spin={mol.spin}")
+        if mol.spin == 0:
+            if theory == "HF":
+                mf = scf.RHF(mol)
+            elif theory in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]:  # ← 追加
+                mf = dft.RKS(mol)
+                mf.xc = theory.lower()
+                mf.grids.level = 5  # より高密度なグリッドに設定
+            elif theory == "B3LYPD3":
+                mf = dft.RKS(mol)
+                mf.xc = "b3lyp"
+                mf.grids.level = 5  # より高密度なグリッドに設定
+                mf = d3.energy(mf)
+            else:
+                raise ValueError(f"Unsupported theory: {theory}")
+        else:
+            if theory == "HF":
+                mf = scf.UHF(mol)
+            elif theory in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]:  # ← 追加
+                mf = dft.UKS(mol)
+                mf.xc = theory.lower()
+                mf.grids.level = 5  # より高密度なグリッドに設定
+            elif theory == "B3LYPD3":
+                mf = dft.UKS(mol)
+                mf.xc = "b3lyp"
+                mf.grids.level = 5  # より高密度なグリッドに設定
+                mf = d3.energy(mf)
+        # 溶媒モデルをセット
+        if solvent_model is not None:
+            if solvent_model.upper() == "PCM":
+                mf = solvent.PCM(mf)
+                if eps is not None:
+                    mf.with_solvent.eps = eps
+            elif solvent_model.upper() == "DDCOSMO":
+                mf = solvent.ddCOSMO(mf)
+                if eps is not None:
+                    mf.with_solvent.eps = eps   
+        mf.chkfile = chkfile_name
+        mf.verbose = 4
+        mf.stdout = open(output_file, 'w')
+        mf.kernel()
+        # TDDFT計算
+        td = tddft.TDDFT(mf, nstates=nstates)
+        td.kernel() 
+        # 結果の保存
+        with open(output_file, 'a') as f:
+            f.write("\nTD-DFT Excited States Results:\n")
+            f.write("====================================\n")
+            for i, root in enumerate(td.roots):
+                f.write(f"State {i+1}:\n")
+                f.write(f"  Energy: {root['e']:.6f} eV\n")
+                f.write(f"  Oscillator Strength: {root['f']:.6f}\n")
+                if 'dipole' in root:
+                    f.write(f"  Dipole Moment: {root['dipole']}\n")
+                if 'transition' in root:
+                    f.write(f"  Transition: {root['transition']}\n")
+                f.write("\n")   
+        log_entry["time"] = "End_Time"
+        log_entry["result"] = {
+            "nstates": nstates,
+            "chkfile": os.path.abspath(chkfile_name),
+            "td_results": td.roots
+        }
+        if compound_name:
+            save_log(compound_name, log_entry)      
+        # Molden形式で出力
+        tools.molden.dump_scf(mf, molden_file)
+        # CJSON形式で出力
+        cjson_data = generate_cjson(mol, td.roots)
+        with open(cjson_file, 'w') as f:
+            f.write(cjson_data)
+        return {
+            'td_results': td.roots,
+            'mol': mol,
+            'molden_file': molden_file,
+            'cjson_file': cjson_file
+        }
+    except Exception as e:
+        log_entry["time"] = "Error_End"
+        log_entry["error"] = str(e)
+        if compound_name:
+            save_log(compound_name, log_entry)
+        raise RuntimeError(f"TD-DFT calculation failed: {e}")   
+
+# 5. NMR計算（化学シフト）
 def calc_nmr_and_shift(mf, mol, target_element=None, basis_set=None, directory=None, theory="HF"):
     """
     NMRシールド値のみ計算（Jカップリングなし, 指定元素のみ）
@@ -714,7 +831,7 @@ def calc_nmr_and_shift(mf, mol, target_element=None, basis_set=None, directory=N
 
     return results, nmr_calc_result_name
 
-# 5. 分子の応答性（極性率や双極子モーメント）
+# 6. 分子の応答性（極性率や双極子モーメント）
 def compute_electric_properties(mol, basis_set='6-31g', density_g_cm3=1.0, slope = 278.26, intercept = -299.10):
 
     # PySCFのmolからxyz座標を取得
@@ -769,7 +886,7 @@ def compute_electric_properties(mol, basis_set='6-31g', density_g_cm3=1.0, slope
         "dielectric_constant_pred": eps_pred,
     }
 
-# IP計算
+# 7. IP計算
 def calculate_ionization_potential(
     mol, theory, basis, optimize_neutral, optimize_radical_cation,
     solvent_model=None, eps=None, compound_name=None, smiles=None, opt_theory=None, opt_basis_set=None
@@ -825,7 +942,7 @@ def calculate_ionization_potential(
                 mf = scf.RHF(mol_obj).run() if not is_cation else scf.UHF(mol_obj).run()
                 mf = mp.MP2(mf).run()
                 hess_class = rhf.Hessian if not is_cation else uhf.Hessian
-            elif theory_upper in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+            elif theory_upper in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]:  # ← 追加
                 if not is_cation:
                     mf = dft.RKS(mol_obj)
                     mf.xc = theory
@@ -989,7 +1106,7 @@ def calculate_ionization_potential(
             save_log(compound_name, log_entry)
         raise RuntimeError(f"Ionization potential calculation failed: {e}")
 
-# 溶媒和エネルギー
+# 8.溶媒和エネルギー
 def calculate_solvation_energy(
     mol, theory, basis,
     optimize_gas=False, optimize_solvent=False,
@@ -1052,7 +1169,7 @@ def calculate_solvation_energy(
             mf = scf.RHF(mol_obj).run()
             mf = mp.MP2(mf).run()
             hess_class = rhf.Hessian
-        elif theory_upper in ["B3LYP", "PBE", "M06-2X", "B97X-D"]:
+        elif theory_upper in ["B3LYP", "CAMB3LYP", "PBE", "PBE0", "M06-2X", "TPSS", "SCAN"]:  # ← 追加
             mf = dft.RKS(mol_obj)
             mf.xc = theory
             hess_class = rks.Hessian
@@ -1165,7 +1282,7 @@ def calculate_solvation_energy(
         "chkfile_solvent": chkfile_solvent,
     }
 
-# 連続計算
+# 9.連続計算
 def compute_molecule_properties(
     name, smiles, xyz, charge, spin, conv_params,
     theory="B3LYP", basis_set="def2-SVP",
@@ -1202,7 +1319,7 @@ def compute_molecule_properties(
 
     if optimize_with_qc:
         print(f"[INFO] Running geometry optimization for {name} with SMILES: {smiles}")
-        xyz_opt = run_geometry_optimization(
+        xyz_opt, mf = run_geometry_optimization(
             compound_name=name,
             smiles=smiles,
             atom_input=xyz,

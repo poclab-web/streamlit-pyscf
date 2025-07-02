@@ -21,6 +21,9 @@ load_css("config/styles.css")
 
 st.title("General Calculation Workflow")
 
+st.warning("調整中です。まだ使用しないでください")
+st.divider()
+
 # 1. 構造入力
 st.header("1. 構造の入力")
 input_type = st.selectbox("入力形式", ["XYZ", "SMILES"])
@@ -98,7 +101,7 @@ if st.button("全自動計算スタート"):
 
             st.info(f"構造最適化を実行中... (配座ID: {conf_id})")
             pyscf_input = xyz_str
-            final_geometry = run_geometry_optimization(
+            final_geometry, mf = run_geometry_optimization(
                 compound_name, smiles, pyscf_input, opt_basis, opt_theory,
                 charge=charge, spin=spin, solvent_model="None", eps=None, symmetry=False, conv_params={}, maxsteps=100
             )

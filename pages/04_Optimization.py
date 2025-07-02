@@ -149,7 +149,7 @@ if st.button("Run Geometry Optimization"):
         print("######################################################")
         print("########## Running geometry optimization...###########")
         print("######################################################")
-        final_geometry = run_geometry_optimization(
+        final_geometry, mf = run_geometry_optimization(
             compound_name, smiles, pyscf_input, basis_set, theory, 
             charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, symmetry=symmetry, conv_params=conv_params, maxsteps=maxsteps
         )

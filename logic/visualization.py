@@ -103,19 +103,107 @@ def plot_energy_decomposition(terms, values):
     plt.tight_layout()
     plt.show()
 
-
-
-def plot_uv_spectrum(wavelengths, intensities):
+# UVスペクトルの可視化
+def plot_uv_spectrum(
+    wavelengths,
+    wavelength_min,
+    wavelength_max,
+    width=10,
+    n_points=2000,
+    ax=None
+):
     """
-    UVスペクトルをプロット。
+    UVスペクトル（ガウスブロード＋スティック）を描画する
+
+    Parameters
+    ----------
+    wavelengths : list of tuple
+        (波長[nm], 振動子強度) のリスト
+    wavelength_min : float
+        表示する波長の最小値
+    wavelength_max : float
+        表示する波長の最大値
+    width : float
+        ガウス幅（標準偏差, nm）
+    n_points : int
+        x軸の分割数
+    ax : matplotlib.axes.Axes or None
+        描画先。Noneなら新規作成
     """
-    plt.figure(figsize=(10, 6))
-    plt.plot(wavelengths, intensities, color="purple", marker="o", linestyle="-")
-    plt.xlabel("Wavelength (nm)")
-    plt.ylabel("Absorption Intensity (a.u.)")
-    plt.title("UV Spectrum")
-    plt.grid()
-    plt.show()
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from scipy.stats import norm
+
+    wavelengths = sorted(wavelengths, key=lambda x: x[0])
+    filtered = [(w, o) for w, o in wavelengths if wavelength_min <= w <= wavelength_max]
+
+    x = np.linspace(wavelength_min, wavelength_max, n_points)
+    spectrum = np.zeros_like(x)
+
+    for w, o in filtered:
+        spectrum += o.real * norm.pdf(x, w, width) * width * np.sqrt(2 * np.pi)
+
+    stick_wavelengths = [w for w, o in filtered]
+    stick_intensities = [o for w, o in filtered]
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4))
+    else:
+        fig = ax.figure
+
+    ax.plot(x, spectrum, color='blue', alpha=0.9, linewidth=2, label='Gaussian Broadening')
+    ax.vlines(stick_wavelengths, 0, stick_intensities, color='red', alpha=0.3, linewidth=1, label='Transitions')
+    ax.set_title("UV-Vis Spectrum (Gaussian + Sticks)")
+    ax.set_xlabel("Wavelength (nm)")
+    ax.set_ylabel("Intensity (a.u.)")
+    ax.set_xlim(wavelength_min, wavelength_max)
+    ax.grid(True)
+    ax.legend()
+    return fig, ax
+
+def find_allowed_excited_state_from_lists(excitation_energies, oscillator_strengths, threshold=0.01):
+    """
+    エネルギーとオシレーター強度のリストから、最初に有意な遷移を返す。
+
+    Parameters:
+        excitation_energies: List[float]  # eV単位
+        oscillator_strengths: List[float]
+        threshold: float = 0.01
+
+    Returns:
+        (state_index, energy_in_eV, oscillator_strength) or (None, None, None)
+    """
+    for i, (e, f) in enumerate(zip(excitation_energies, oscillator_strengths)):
+        if f >= threshold:
+            return i + 1, e, f  # 1-indexed
+    return None, None, None
+
+def prepare_excited_states_table(excitation_energies, oscillator_strengths, threshold=0.01):
+    """
+    励起状態のリストをDataFrameに整形し、有意な遷移状態を選定する。
+
+    Parameters:
+        excitation_energies: List[float]
+        oscillator_strengths: List[float]
+        threshold: float
+
+    Returns:
+        df: pd.DataFrame
+        selected_state: dict or None
+            例: {"index": 3, "energy": 3.02, "strength": 0.045}
+    """
+    df = pd.DataFrame({
+        "State": list(range(1, len(excitation_energies) + 1)),
+        "Energy (eV)": excitation_energies,
+        "Oscillator Strength": oscillator_strengths
+    })
+
+    for i, (e, f) in enumerate(zip(excitation_energies, oscillator_strengths)):
+        if f >= threshold:
+            selected_state = {"index": i + 1, "energy": e, "strength": f}
+            return df, selected_state
+
+    return df, None
 
 def plot_nmr_spectrum(chemical_shifts, intensities):
     """

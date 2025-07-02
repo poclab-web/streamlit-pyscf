@@ -373,7 +373,8 @@ if "deprot_candidates" in st.session_state:
                 "$$\n"
                 "\\mathrm{p}K_a^\\mathrm{sample} = \\mathrm{p}K_a^\\mathrm{ref} + \\frac{\\Delta G_\\mathrm{deprot}^\\mathrm{sample} - \\Delta G_\\mathrm{deprot}^\\mathrm{ref}}{2.303RT}\n"
                 "$$\n"
-                "where $\\Delta G_\\mathrm{deprot} = G_\\mathrm{anion} - G_\\mathrm{neutral}$.\n"
+                "where $\\Delta G_\\mathrm{deprot} = G_\\mathrm{anion} - G_\\mathrm{neutral}$.\n" \
+                "All calculations were performed using a custom Streamlit-based interface [3] integrating RDKit and PySCF."
             )
             st.markdown("---")
             st.markdown(

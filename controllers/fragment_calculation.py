@@ -307,7 +307,7 @@ def compute_radical_fragment_properties(name, smiles, xyz, theory, basis_set, ch
         }
 
     print(f"[INFO] Running geometry optimization for {name} with SMILES: {smiles}")
-    xyz_opt = run_geometry_optimization(
+    xyz_opt, mf = run_geometry_optimization(
         compound_name=name,
         smiles=smiles,
         atom_input=xyz,

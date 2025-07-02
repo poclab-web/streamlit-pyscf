@@ -6,6 +6,58 @@ from rdkit.Chem import Descriptors, rdMolDescriptors
 from rdkit.Chem import inchi
 import csv
 
+from config.config import columns_info
+
+# データベースのカラムが存在するか確認し、必要なカラムを追加
+# 既存のカラム情報を取得し、必要なカラムが存在しない場合は追加する
+
+def ensure_all_columns_exist(db_path="data/energy_db.sqlite"):
+    """データベースのmoleculesテーブルに必要なカラムが存在するか確認し、存在しない場合は追加する。"""
+
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("PRAGMA table_info(molecules);")
+    existing_columns = [row[1] for row in cur.fetchall()]
+
+    added = False
+    for col_name, col_type, _ in columns_info:
+        if col_name not in existing_columns:
+            # timestampのDEFAULTはALTER TABLEで追加できないため、型のみ追加
+            if col_name == "timestamp":
+                cur.execute(f"ALTER TABLE molecules ADD COLUMN {col_name} TEXT;")
+            else:
+                # AUTOINCREMENTやNOT NULL制約はALTER TABLEでは追加できないので型のみ
+                base_type = col_type.split()[0]
+                cur.execute(f"ALTER TABLE molecules ADD COLUMN {col_name} {base_type};")
+            print(f"✅ カラム {col_name} を追加しました。")
+            added = True
+
+    if not added:
+        print("✅ すべてのカラムが既に存在しています。追加はありません。")
+
+    conn.commit()
+    conn.close()
+
+# データベース接続と統計取得
+def get_summary_statistics(db_path="energy_db.sqlite"):
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    cur.execute("SELECT COUNT(*) FROM molecules")
+    total = cur.fetchone()[0]
+
+    cur.execute("SELECT DISTINCT method FROM molecules")
+    methods = [row[0] for row in cur.fetchall()]
+
+    cur.execute("SELECT DISTINCT basis FROM molecules")
+    bases = [row[0] for row in cur.fetchall()]
+
+    cur.execute("SELECT DISTINCT solvent FROM molecules WHERE solvent IS NOT NULL")
+    solvents = [row[0] for row in cur.fetchall()]
+
+    conn.close()
+    return total, methods, bases, solvents
+
 # データベースへのデータの登録部分
 def insert_molecule_with_frequencies(
     inchi,
@@ -21,8 +73,13 @@ def insert_molecule_with_frequencies(
     temperature=298.15,
     pressure=1.0,
     frequencies=None,
-    num_imaginary=None,  
+    num_imaginary=None,
     chk_file_path=None,
+    nstates=None,
+    excited_spin=None,
+    tda=None,
+    excited_energies=None,         
+    oscillator_strengths=None,     
     db_path="data/energy_db.sqlite"
 ):
     from rdkit import Chem
@@ -30,6 +87,7 @@ def insert_molecule_with_frequencies(
     import sqlite3
     import json
     from datetime import datetime
+    import os
 
     # inchi, inchikey からmolを生成
     mol = Chem.MolFromInchi(inchi)
@@ -68,54 +126,49 @@ def insert_molecule_with_frequencies(
         frequencies TEXT,
         chk_file BLOB,
         num_imaginary INTEGER,
+        nstates INTEGER,                
+        excited_spin TEXT,              
+        tda INTEGER,                    
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
 
     freq_json = json.dumps(frequencies) if frequencies is not None else None
+    excited_energies_json = json.dumps(excited_energies) if excited_energies is not None else None
+    oscillator_strengths_json = json.dumps(oscillator_strengths) if oscillator_strengths is not None else None
 
     # データ挿入
     cur.execute("""
     INSERT INTO molecules (
         inchi, inchikey, mol, mw, formula, charge, spin, g_tot, zpe,
         method, basis, solvent, dielectric, temperature, pressure,
-        frequencies, chk_file, num_imaginary, timestamp
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        frequencies, chk_file, num_imaginary,
+        nstates, excited_spin, tda,
+        excited_energies, oscillator_strengths,
+        timestamp
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         inchi, inchikey, molblock, mw, formula, charge, spin, g_tot, zpe,
         method, basis, solvent, dielectric, temperature, pressure,
-        freq_json, chk_file_data, num_imaginary, datetime.now().isoformat()
+        freq_json, chk_file_data, num_imaginary,
+        nstates, excited_spin, int(tda) if tda is not None else None,
+        excited_energies_json, oscillator_strengths_json,   # 追加
+        datetime.now().isoformat()
     ))
 
     conn.commit()
     conn.close()
     print(f"✅ Inserted molecule: {inchikey} ")
 
-# データベース接続と統計取得
-def get_summary_statistics(db_path="energy_db.sqlite"):
-    conn = sqlite3.connect(db_path)
-    cur = conn.cursor()
-
-    cur.execute("SELECT COUNT(*) FROM molecules")
-    total = cur.fetchone()[0]
-
-    cur.execute("SELECT DISTINCT method FROM molecules")
-    methods = [row[0] for row in cur.fetchall()]
-
-    cur.execute("SELECT DISTINCT basis FROM molecules")
-    bases = [row[0] for row in cur.fetchall()]
-
-    cur.execute("SELECT DISTINCT solvent FROM molecules WHERE solvent IS NOT NULL")
-    solvents = [row[0] for row in cur.fetchall()]
-
-    conn.close()
-    return total, methods, bases, solvents
 
 # データベースから分子データを取得する関数
-def get_molecule_from_sqlite(inchikey, method, basis, spin, charge,
-                              solvent=None, dielectric=None,
-                              temperature=298.15, pressure=1.0,
-                              db_path="energy_db.sqlite"):
+def get_molecule_from_sqlite(
+    inchikey, method, basis, spin, charge,
+    solvent=None, dielectric=None,
+    temperature=298.15, pressure=1.0,
+    nstates=None, excited_spin=None, tda=None,
+    db_path="energy_db.sqlite"
+):
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     # テーブルがなければ作成
@@ -140,12 +193,15 @@ def get_molecule_from_sqlite(inchikey, method, basis, spin, charge,
         frequencies TEXT,
         chk_file BLOB,
         num_imaginary INTEGER,
+        nstates INTEGER,
+        excited_spin TEXT,
+        tda INTEGER,
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
+
     query = """
-    SELECT id, g_tot, zpe, frequencies, chk_file, num_imaginary
-    FROM molecules
+    SELECT * FROM molecules
     WHERE inchikey = ? AND method = ? AND basis = ?
       AND spin = ? AND charge = ? AND temperature = ? AND pressure = ?
     """
@@ -163,29 +219,46 @@ def get_molecule_from_sqlite(inchikey, method, basis, spin, charge,
         query += " AND dielectric = ?"
         params.append(dielectric)
 
+    # 追加: nstates, excited_spin, tda
+    if nstates is not None:
+        query += " AND nstates = ?"
+        params.append(nstates)
+    if excited_spin is not None:
+        query += " AND excited_spin = ?"
+        params.append(excited_spin)
+    if tda is not None:
+        query += " AND tda = ?"
+        params.append(int(tda))
+
     cur.execute(query, params)
     row = cur.fetchone()
     conn.close()
     if row:
-        molecule_id, g_tot, zpe, freq_json, chk_file, num_imaginary = row
+        (molecule_id, g_tot, zpe, freq_json, chk_file, num_imaginary,
+         excited_energies_json, oscillator_strengths_json) = row
         frequencies = json.loads(freq_json) if freq_json else None
+        excited_energies = json.loads(excited_energies_json) if excited_energies_json else None
+        oscillator_strengths = json.loads(oscillator_strengths_json) if oscillator_strengths_json else None
         return {
             "id": molecule_id,
             "g_tot": g_tot,
             "zpe": zpe,
             "frequencies": frequencies,
             "chk_file": chk_file,
-            "num_imaginary": num_imaginary
+            "num_imaginary": num_imaginary,
+            "excited_energies": excited_energies,
+            "oscillator_strengths": oscillator_strengths
         }
     else:
         return None
 
 # データベースから安定な分子を取得する関数
 def get_stable_molecule_from_sqlite(
-    inchikey,  # ←ここをsmilesからinchikeyに変更
+    inchikey,
     method, basis, spin, charge,
     solvent=None, dielectric=None,
     temperature=298.15, pressure=1.0,
+    nstates=None, excited_spin=None, tda=None,
     db_path="energy_db.sqlite"
 ):
     import sqlite3
@@ -216,6 +289,9 @@ def get_stable_molecule_from_sqlite(
         frequencies TEXT,
         chk_file BLOB,
         num_imaginary INTEGER,
+        nstates INTEGER,
+        excited_spin TEXT,
+        tda INTEGER,
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -241,6 +317,24 @@ def get_stable_molecule_from_sqlite(
         query += " AND dielectric = ?"
         params.append(dielectric)
 
+    if nstates is None:
+        query += " AND nstates IS NULL"
+    else:
+        query += " AND nstates = ?"
+        params.append(nstates)
+
+    if excited_spin is None:
+        query += " AND excited_spin IS NULL"
+    else:
+        query += " AND excited_spin = ?"
+        params.append(excited_spin)
+
+    if tda is None:
+        query += " AND tda IS NULL"
+    else:
+        query += " AND tda = ?"
+        params.append(int(tda))
+
     query += " ORDER BY g_tot ASC LIMIT 1"
 
     cur.execute(query, params)
@@ -260,6 +354,22 @@ def get_stable_molecule_from_sqlite(
         }
     else:
         return None
+
+
+# データベースから最新の分子データを取得する関数
+def get_latest_molecules(n=5, db_path="data/energy_db.sqlite"):
+    """
+    データベースから最新n件の分子データを取得
+    """
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT * FROM molecules ORDER BY id DESC LIMIT ?", (n,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
 
 # データベースから分子データをJSON形式でエクスポートする関数
 def export_molecule_data_to_json(export_path="exported_molecules.json", db_path="energy_db.sqlite"):
@@ -288,6 +398,7 @@ def export_molecule_data_to_json(export_path="exported_molecules.json", db_path=
 
     conn.close()
     print(f"✅ Exported {len(data)} molecules to {export_path}")
+
 
 # データベースから分子データをCSV形式でエクスポートする関数
 def export_molecule_data_to_csv(export_path="exported_molecules.csv", db_path="energy_db.sqlite"):
@@ -360,6 +471,9 @@ def import_molecules_from_json(json_path, db_path="energy_db.sqlite"):
         frequencies TEXT,
         chk_file BLOB,
         num_imaginary INTEGER,
+        nstates INTEGER,                -- 追加
+        excited_spin TEXT,              -- 追加 (singlet/triplet)
+        tda INTEGER,                    -- 追加 (0/1)
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -373,15 +487,21 @@ def import_molecules_from_json(json_path, db_path="energy_db.sqlite"):
             inchi, inchikey, mol, mw, formula, charge, spin,
             g_tot, zpe, method, basis, solvent, dielectric,
             temperature, pressure, frequencies, chk_file,
-            num_imaginary, timestamp
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            num_imaginary, nstates, excited_spin, tda,
+            excited_energies, oscillator_strengths,   -- 追加
+            timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             entry["inchi"], entry["inchikey"], entry["mol"], entry["mw"], entry["formula"],
             entry["charge"], entry["spin"], entry["g_tot"], entry["zpe"],
             entry["method"], entry["basis"], entry["solvent"], entry["dielectric"],
             entry["temperature"], entry["pressure"],
-            json.dumps(entry["frequencies"]) if entry["frequencies"] else None,
-            chk_file_data, entry["num_imaginary"], entry["timestamp"]
+            json.dumps(entry["frequencies"]) if entry.get("frequencies") else None,
+            chk_file_data, entry.get("num_imaginary"),
+            entry.get("nstates"), entry.get("excited_spin"), entry.get("tda"),
+            json.dumps(entry.get("excited_energies")) if entry.get("excited_energies") else None,
+            json.dumps(entry.get("oscillator_strengths")) if entry.get("oscillator_strengths") else None,
+            entry["timestamp"]
         ))
 
     conn.commit()
@@ -414,6 +534,11 @@ def import_molecules_from_csv(csv_path, db_path="energy_db.sqlite"):
         frequencies TEXT,
         chk_file BLOB,
         num_imaginary INTEGER,
+        nstates INTEGER,
+        excited_spin TEXT,
+        tda INTEGER,
+        excited_energies TEXT,
+        oscillator_strengths TEXT,
         timestamp TEXT DEFAULT CURRENT_TIMESTAMP
     );
     """)
@@ -427,17 +552,31 @@ def import_molecules_from_csv(csv_path, db_path="energy_db.sqlite"):
         frequencies = entry["frequencies"]
         if frequencies:
             try:
-                frequencies = json.dumps(json.loads(frequencies))  # json文字列として整形
+                frequencies = json.dumps(json.loads(frequencies))
             except Exception:
                 frequencies = None
+
+        excited_energies = entry.get("excited_energies")
+        oscillator_strengths = entry.get("oscillator_strengths")
+        if excited_energies:
+            try:
+                excited_energies = json.dumps(json.loads(excited_energies))
+            except Exception:
+                excited_energies = None
+        if oscillator_strengths:
+            try:
+                oscillator_strengths = json.dumps(json.loads(oscillator_strengths))
+            except Exception:
+                oscillator_strengths = None
 
         cur.execute("""
         INSERT INTO molecules (
             inchi, inchikey, mol, mw, formula, charge, spin,
             g_tot, zpe, method, basis, solvent, dielectric,
             temperature, pressure, frequencies, chk_file,
-            num_imaginary, timestamp
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            num_imaginary, nstates, excited_spin, tda,
+            excited_energies, oscillator_strengths, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             entry["inchi"], entry["inchikey"], entry["mol"], float(entry["mw"]), entry["formula"],
             int(entry["charge"]), int(entry["spin"]), float_or_none(entry["g_tot"]),
@@ -445,6 +584,11 @@ def import_molecules_from_csv(csv_path, db_path="energy_db.sqlite"):
             float_or_none(entry["dielectric"]), float(entry["temperature"]),
             float(entry["pressure"]), frequencies, chk_file_data,
             int(entry["num_imaginary"]) if entry["num_imaginary"] else None,
+            int(entry["nstates"]) if entry.get("nstates") else None,
+            entry.get("excited_spin"),
+            int(entry["tda"]) if entry.get("tda") else None,
+            excited_energies,
+            oscillator_strengths,
             entry["timestamp"]
         ))
 
@@ -465,7 +609,6 @@ def update_molecule_energy(
     zpe=None,
     db_path="energy_db.sqlite"
 ):
-    import sqlite3
 
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
@@ -505,6 +648,94 @@ def delete_molecule_by_id(molecule_id, db_path="energy_db.sqlite"):
     conn.close()
 
     print(f"🗑️ Molecule ID {molecule_id} を削除しました。")
+
+
+def get_molecules_from_sqlite(
+    inchikey, method, basis, spin, charge,
+    solvent=None, dielectric=None,
+    temperature=298.15, pressure=1.0,
+    nstates=None, excited_spin=None, tda=None,
+    db_path="energy_db.sqlite"
+):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row  # ← これを追加
+    cur = conn.cursor()
+    # テーブルがなければ作成
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS molecules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        inchi TEXT NOT NULL,
+        inchikey TEXT NOT NULL,
+        mol TEXT,
+        mw REAL,
+        formula TEXT,
+        charge INTEGER NOT NULL,
+        spin INTEGER NOT NULL,
+        g_tot REAL,
+        zpe REAL,
+        method TEXT NOT NULL,
+        basis TEXT NOT NULL,
+        solvent TEXT,
+        dielectric REAL,
+        temperature REAL,
+        pressure REAL,
+        frequencies TEXT,
+        chk_file BLOB,
+        num_imaginary INTEGER,
+        nstates INTEGER,
+        excited_spin TEXT,
+        tda INTEGER,
+        timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    query = """
+    SELECT id, g_tot, zpe, frequencies, chk_file, num_imaginary,
+           excited_energies, oscillator_strengths, timestamp
+    FROM molecules
+    WHERE inchikey = ? AND method = ? AND basis = ?
+      AND spin = ? AND charge = ? AND temperature = ? AND pressure = ?
+    """
+    params = [inchikey, method, basis, spin, charge, temperature, pressure]
+
+    if solvent is None:
+        query += " AND solvent IS NULL"
+    else:
+        query += " AND solvent = ?"
+        params.append(solvent)
+
+    if dielectric is None:
+        query += " AND dielectric IS NULL"
+    else:
+        query += " AND dielectric = ?"
+        params.append(dielectric)
+
+    # nstates, excited_spin, tda の条件をNoneのとき無視
+    if nstates is not None:
+        query += " AND nstates = ?"
+        params.append(nstates)
+    if excited_spin is not None:
+        query += " AND excited_spin = ?"
+        params.append(excited_spin)
+    if tda is not None:
+        query += " AND tda = ?"
+        params.append(int(tda))
+
+    query += " ORDER BY id DESC"
+    cur.execute(query, params)
+    rows = cur.fetchall()
+
+    # DBの全データを確認
+    cur.execute("SELECT id, inchikey, method, basis, spin, charge, solvent, dielectric, temperature, pressure, nstates, excited_spin, tda FROM molecules")
+    all_rows = cur.fetchall()
+
+    # 検索実行
+    cur.execute(query, params)
+    rows = cur.fetchall()
+    print("DEBUG: rows =", rows)
+    conn.close()
+    results = [dict(row) for row in rows]  # ここでdict化
+    return results
 
 
 # 使用例
