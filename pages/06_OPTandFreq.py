@@ -98,20 +98,7 @@ compound_name = inchikey_str
 directory = os.path.join("data", compound_name)
 os.makedirs(directory, exist_ok=True)
 
-# ここで既存データを検索
-existing = get_molecule_from_sqlite(
-    inchikey=inchikey_str,
-    method=theory,
-    basis=basis,
-    spin=spin,
-    charge=charge,
-    solvent=solvent_model if solvent_model not in [None, "None"] else None,
-    dielectric=eps,
-    temperature=298.15,
-    pressure=1.0,
-    db_path="data/energy_db.sqlite"
-)
-
+# データベースからの既存データの取得
 stable_existing = get_stable_molecule_from_sqlite(
     inchikey=inchikey_str,
     method=theory,
@@ -125,6 +112,8 @@ stable_existing = get_stable_molecule_from_sqlite(
     db_path="data/energy_db.sqlite"
 )
 
+existing = stable_existing
+
 use_db_data = False
 if existing is not None:
     st.info("🗃️ 同じ条件のデータが既にデータベースに存在します。")
@@ -135,7 +124,6 @@ if existing is not None:
         index=0,
         key="use_db_data_radio"
     ) == "使う（計算をスキップ）"
-
 
 if st.button("Calculate"):
     # 以降は use_db_data, existing を使って分岐

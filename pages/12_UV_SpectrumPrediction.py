@@ -263,7 +263,7 @@ if use_db_data_excited and selected_excited is not None:
     if excited_spin == "singlet":
         df = pd.DataFrame({
             "State": list(range(1, len(excitation_energies) + 1)),
-            "Energy (eV)": excitation_energies,
+            "Energy (Hartree)": excitation_energies,
             "Oscillator Strength": oscillator_strengths
         })
 
@@ -274,8 +274,9 @@ if use_db_data_excited and selected_excited is not None:
         f_input = st.number_input("有意な振動子強度の閾値 (f ≥ )", min_value=0.0, max_value=1.0, value=0.01, step=0.01)
         for i, (e, f) in enumerate(zip(excitation_energies, oscillator_strengths)):
             f = float(f) if isinstance(f, (int, float)) else 0.0
+            e_ev = float(e) * 27.2114  # ハートリー→eV変換
             if f >= f_input:
-                st.success(f"有意な最初の一重項遷移(S1 energy): State {i+1}, Energy = {e:.2f} eV, f = {f_input:.4f}")
+                st.success(f"有意な最初の一重項遷移(S1 energy): State {i+1}, Energy = {e_ev:.2f} eV, f = {f:.4f}")
                 break
         else:
             st.warning("f ≥ 0.01 の有意な一重項遷移は見つかりませんでした。")
@@ -285,9 +286,9 @@ if use_db_data_excited and selected_excited is not None:
         st.subheader("波長範囲の設定")
         wavelength_min, wavelength_max = st.slider(
             "表示する波長範囲 (nm)",
-            min_value=190,
+            min_value=0,
             max_value=800,
-            value=(190, 800),
+            value=(0, 800),
             step=1
         )
 
@@ -436,7 +437,7 @@ if st.button("計算を開始"):
     if excited_spin == "singlet":
         df = pd.DataFrame({
             "State": list(range(1, len(excited_energies) + 1)),
-            "Energy (eV)": excited_energies,
+            "Energy (Hartree)": excited_energies,
             "Oscillator Strength": oscillator_strengths
         })
 
@@ -446,8 +447,9 @@ if st.button("計算を開始"):
         # 最初に有意な遷移（f >= 0.01）を強調
         f_input = st.number_input("有意な振動子強度の閾値 (f ≥ )", min_value=0.0, max_value=1.0, value=0.01, step=0.01)
         for i, (e, f) in enumerate(zip(excited_energies, oscillator_strengths)):
+            e_ev = float(e) * 27.2114  # ハートリー→eV変換
             if f >= f_input:
-                st.success(f"有意な最初の一重項遷移(S1 energy): State {i+1}, Energy = {e:.2f} eV, f = {f_input:.4f}")
+                st.success(f"有意な最初の一重項遷移(S1 energy): State {i+1}, Energy = {e_ev:.2f} eV, f = {f:.4f}")
                 break
         else:
             st.warning("f ≥ 0.01 の有意な一重項遷移は見つかりませんでした。")
@@ -502,9 +504,9 @@ if st.button("計算を開始"):
     st.subheader("波長範囲の設定")
     wavelength_min, wavelength_max = st.slider(
         "表示する波長範囲 (nm)",
-        min_value=190,
+        min_value=0,
         max_value=800,
-        value=(190, 800),
+        value=(0, 800),
         step=1
     )
 
