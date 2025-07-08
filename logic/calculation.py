@@ -242,7 +242,7 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
         symmetry (bool): Whether to consider molecular symmetry.
 
     Returns:
-        float: The calculated energy.
+        dict: The calculated results including energy and file paths.
     """
     log_entry = {
         "time": "Start_Time",
@@ -274,7 +274,6 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                                             extension="molden", charge=charge, spin=spin)
         output_file = get_sequential_filename(directory, theory, basis_set, opt_theory, opt_basis_set,
                                             extension="out", charge=charge, spin=spin)
-
 
         log_entry["file_info"] = {
             "chkfile": os.path.basename(chkfile_name),
@@ -338,10 +337,34 @@ def run_quantum_calculation(compound_name, smiles, atom_input, basis_set, theory
                 "chkfile": os.path.abspath(chkfile_name)
             }
 
+            # --- エネルギー分解 ---
+            dm = mf.make_rdm1()          # 密度行列
+            hcore = mf.get_hcore()       # コアハミルトニアン（T + V_nuc）
+            vj, vk = mf.get_jk()         # クーロン・交換行列
+
+            E_nuc = mol.energy_nuc()                             # 核間反発エネルギー
+            E_core = np.einsum('ij,ji', dm, hcore)               # 電子-核引力項（1電子）
+            E_J = 0.5 * np.einsum('ij,ji', dm, vj)               # クーロン項
+            E_K = 0.5 * np.einsum('ij,ji', dm, vk)               # 交換項
+            E_elec = E_core + E_J - E_K                          # 電子エネルギー
+
             tools.molden.dump_scf(mf, molden_file)
             save_log(compound_name, log_entry)
 
-        return energy, molden_file
+        # --- 返り値を辞書型に ---
+        result_dict = {
+            "energy": energy,
+            "converged": mf.converged,
+            "chkfile": chkfile_name,
+            "molden_file": molden_file,
+            "output_file": output_file,
+            "E_nuc": E_nuc,
+            "E_core": E_core,
+            "E_J": E_J,
+            "E_K": E_K,
+            "E_elec": E_elec,
+        }
+        return result_dict
     except Exception as e:
         log_entry["time"] = "Error_End_Time"
         log_entry["error"] = str(e)
@@ -1299,7 +1322,7 @@ def compute_molecule_properties(
 
     if is_single_atom(xyz, charge=charge, spin=spin):
         print(f"[INFO] {name} is a single-atom molecule. Skipping optimization and frequency.")
-        energy, _ = run_quantum_calculation(
+        result = run_quantum_calculation(
             compound_name=name,
             smiles=smiles,
             atom_input=xyz,
@@ -1311,6 +1334,7 @@ def compute_molecule_properties(
             eps=eps,
             symmetry=False
         )
+        energy = result["energy"]
         return {
             'G_tot': energy,
             'frequencies': {},

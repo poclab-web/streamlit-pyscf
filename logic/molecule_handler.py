@@ -10,9 +10,12 @@ from rdkit.Chem import AllChem, Draw, rdDetermineBonds
 from rdkit.Chem.rdmolfiles import MolFromXYZFile
 from rdkit.Geometry import Point3D, Point2D
 from rdkit.Chem import rdchem
+from rdkit.Chem import rdmolops
 
 from rdkit.Chem import rdDepictor
 from rdkit.Chem.Draw import rdMolDraw2D
+from scipy.spatial.distance import cdist
+import numpy as np
 
 class MoleculeHandler:
     def __init__(self, input_data, input_type="smiles"):
@@ -38,11 +41,11 @@ class MoleculeHandler:
         elif input_type.lower() == "xyz":
             self.mol = self._load_from_xyz(input_data)
 
-        elif input_type.lower() == "z-matrix":
-            raise NotImplementedError("Z-Matrix parsing is not supported.")
+        elif input_type.lower() == "rdkit":
+            self.mol = input_data
 
         else:
-            raise ValueError("Unsupported input type. Use 'smiles', 'xyz', or 'z-matrix'.")
+            raise ValueError("Unsupported input type. Use 'smiles', 'xyz', or 'rdkit'.")
 
     def _get_bracket_atom_indices(self, smiles, mol):
         """
@@ -68,30 +71,46 @@ class MoleculeHandler:
 
     def _load_from_xyz(self, xyz):
         try:
-            lines = xyz.strip().split("\n")
+            # 改行と空白で分割し、1行に複数原子があっても対応
+            lines = [l for l in xyz.strip().split("\n") if l.strip()]
+            # 1行目が原子数ならスキップ
+            try:
+                natoms = int(lines[0])
+                if len(lines) == natoms + 2:
+                    lines = lines[2:]  # コメント行もスキップ
+                elif len(lines) == natoms:
+                    lines = lines[1:]  # コメントなし
+                else:
+                    lines = lines[2:]  # フォーマット不一致時もスキップ
+            except ValueError:
+                # 1行目が原子数でなければそのまま
+                pass
+
             atoms = []
             coords = []
-
             for line in lines:
                 parts = line.split()
-                if len(parts) != 4:
+                # 1行に複数原子が並ぶ場合も対応
+                if len(parts) % 4 != 0:
                     raise ValueError(f"Invalid XYZ format: {line}")
-                atom = parts[0]
-                x, y, z = map(float, parts[1:])
-                atoms.append(atom)
-                coords.append(Point3D(x, y, z))
+                for i in range(0, len(parts), 4):
+                    atom = parts[i]
+                    x, y, z = map(float, parts[i+1:i+4])
+                    atoms.append(atom)
+                    coords.append((x, y, z))
 
+            # RDKit Mol作成
             mol = Chem.RWMol()
             for atom in atoms:
                 mol.AddAtom(Chem.Atom(atom))
 
             conf = Chem.Conformer(len(atoms))
-            for i, coord in enumerate(coords):
-                conf.SetAtomPosition(i, coord)
+            for i, (x, y, z) in enumerate(coords):
+                conf.SetAtomPosition(i, Point3D(x, y, z))
             mol.AddConformer(conf)
 
+            # 必要なら結合推定
             rdDetermineBonds.DetermineBonds(mol)
-            mol = Chem.AddHs(mol)
             return mol
         except Exception as e:
             print(f"Error loading XYZ data: {e}")
@@ -101,9 +120,6 @@ class MoleculeHandler:
         if not self.mol:
             raise ValueError("Molecule is not initialized.")
         return any(atom.GetNumRadicalElectrons() > 0 for atom in self.mol.GetAtoms())
-
-
-
 
     def generate_conformers(self, num_conformers=10, max_iterations=200, prune_rms_threshold=0.5, forcefield="MMFF"):
         if not self.mol:
@@ -344,4 +360,90 @@ class MoleculeHandler:
             pos = conf.GetAtomPosition(atom.GetIdx())
             pyscf_atoms.append(f"{atom.GetSymbol()} {pos.x:.8f} {pos.y:.8f} {pos.z:.8f}")
         return "\n".join(pyscf_atoms)
+
+    def get_fragments(self):
+        """
+        分子をフラグメントごとに分割してMolオブジェクトのリストで返す
+        """
+        if not self.mol:
+            raise ValueError("Molecule is not initialized.")
+        return list(Chem.GetMolFrags(self.mol, asMols=True, sanitizeFrags=True))
+
+    def get_fragments_smiles(self):
+        """
+        分子をフラグメントごとに分割し、それぞれのSMILESをリストで返す
+        """
+        fragments = self.get_fragments()
+        return [Chem.MolToSmiles(frag) for frag in fragments]
+
+    @staticmethod
+    def combine_mols_with_3d(smiles_list, offset=5.0, forcefield="UFF"):
+        """
+        複数のSMILESから個別に3D構造を生成し、重ならないように配置して
+        1つの複合体のMolオブジェクトとして返す。
+        """
+        from rdkit import Chem
+        from rdkit.Chem import AllChem
+
+        mols = []
+        for smi in smiles_list:
+            mol = Chem.AddHs(Chem.MolFromSmiles(smi))
+            AllChem.EmbedMolecule(mol)
+            if forcefield.upper() == "UFF":
+                AllChem.UFFOptimizeMolecule(mol)
+            elif forcefield.upper() == "MMFF":
+                mmff_props = AllChem.MMFFGetMoleculeProperties(mol, mmffVariant="MMFF94")
+                if mmff_props is not None:
+                    AllChem.MMFFOptimizeMolecule(mol, mmff_props)
+            mols.append(mol)
+        # 3D座標をずらして重ならないように配置
+        for i, mol in enumerate(mols):
+            conf = mol.GetConformer()
+            for j in range(mol.GetNumAtoms()):
+                pos = conf.GetAtomPosition(j)
+                conf.SetAtomPosition(j, (pos.x + i * offset, pos.y, pos.z))
+        # 複合体Molを作成
+        combo = mols[0]
+        for m in mols[1:]:
+            combo = Chem.CombineMols(combo, m)
+        # Molオブジェクトとして返す
+        return combo
+
+    @staticmethod
+    def place_mol_by_closest_distance(mol1, mol2, target_distance=2.5):
+        """
+        mol2をmol1の近くに、最近接原子間距離がtarget_distanceになるように平行移動して配置する。
+        mol1, mol2: RDKit Molオブジェクト（各1配座のみ）
+        target_distance: 配置したい最小距離（Å）
+        戻り値: 配置後のmol2（mol1は変更しません）
+        """
+        conf1 = mol1.GetConformer()
+        conf2 = mol2.GetConformer()
+        coords1 = np.array([list(conf1.GetAtomPosition(i)) for i in range(mol1.GetNumAtoms())])
+        coords2 = np.array([list(conf2.GetAtomPosition(i)) for i in range(mol2.GetNumAtoms())])
+
+        # 最近接原子ペアを探す
+        dists = cdist(coords1, coords2)
+        idx1, idx2 = np.unravel_index(np.argmin(dists), dists.shape)
+        min_dist = dists[idx1, idx2]
+
+        # 移動ベクトルを計算
+        vec = coords2[idx2] - coords1[idx1]
+        norm = np.linalg.norm(vec)
+        if norm == 0:
+            # 万一同じ座標なら適当にずらす
+            vec = np.array([1.0, 0.0, 0.0])
+            norm = 1.0
+        vec = vec / norm
+
+        # 必要な移動量
+        move = (target_distance - min_dist) * vec
+
+        # mol2全体を平行移動
+        for i in range(mol2.GetNumAtoms()):
+            pos = conf2.GetAtomPosition(i)
+            new_pos = np.array([pos.x, pos.y, pos.z]) + move
+            conf2.SetAtomPosition(i, new_pos.tolist())
+
+        return mol2
 

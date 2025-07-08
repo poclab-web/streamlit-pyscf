@@ -114,11 +114,11 @@ if st.button("全自動計算スタート"):
                 atom_lines = [line for line in lines if len(line.split()) == 4]
                 return "\n".join(atom_lines)
             pyscf_input = xyz_string_to_pyscf_atom(final_geometry)
-            energy, molden_file = run_quantum_calculation(
+            result = run_quantum_calculation(
                 compound_name, smiles, pyscf_input, sp_basis, sp_theory,
                 charge=charge, spin=spin, solvent_model="None", eps=None, symmetry=False
             )
-            st.success(f"1点エネルギー: {energy} Hartree（配座ID: {conf_id}）")
+            st.success(f"1点エネルギー: {result['energy']} Hartree（配座ID: {conf_id}）")
 
             # 振動計算
             st.info(f"振動計算を実行中...（配座ID: {conf_id}）")
@@ -131,7 +131,7 @@ if st.button("全自動計算スタート"):
             # サマリー
             st.header(f"計算サマリー（配座ID: {conf_id}）")
             st.write(f"最適化構造:\n{final_geometry}")
-            st.write(f"1点エネルギー: {energy} Hartree")
+            st.write(f"1点エネルギー: {result['energy']} Hartree")
             st.write(f"振動数: {freq_array}")
 
     except Exception as e:

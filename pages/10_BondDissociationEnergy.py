@@ -16,7 +16,7 @@ from rdkit import Chem
 
 from config.config import conv_preset_values, solvent_models, solvents_data, solvents_file
 
-from logic.calculation import theory_options, basis_set_options, run_quantum_calculation
+from logic.calculation import theory_options, basis_set_options
 from controllers.fragment_calculation import (
     get_fragment_dataframe,
     compute_neutral_molecule_properties,

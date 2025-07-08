@@ -169,9 +169,11 @@ if st.button("Run Geometry Optimization"):
 
         st.write("Running quantum chemistry calculation...")
         print("Running single point quantum chemistry calculation...")
-        energy, molden_file = run_quantum_calculation(
+        result = run_quantum_calculation(
             compound_name, smiles, pyscf_input, basis_set, theory, opt_theory=theory, opt_basis_set=basis_set, charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, symmetry=symmetry
         )
+        energy = result["energy"]
+        molden_file = result["molden_file"]
         # 計算結果を表示
         st.success(f"Calculated Energy: {energy} Hartree")
         st.info(f"Results saved in: {molden_file}")

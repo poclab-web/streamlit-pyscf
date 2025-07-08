@@ -13,6 +13,12 @@ import stmol
 
 from logic.molecule_handler import MoleculeHandler
 from controllers.energydecompositionanalysis import get_hf_energy_decomposition
+from controllers.xyz_fragment_decomposition import (
+    separate_molecules_by_distance,
+    separate_molecules_by_clustering,
+    analyze_fragment_separation,
+    get_fragment_interaction_distance
+)
 
 from logic.calculation import theory_options, basis_set_options, run_quantum_calculation
 
@@ -21,38 +27,90 @@ from logic.calculation import theory_options, basis_set_options, run_quantum_cal
 # カスタムCSSを適用
 load_css("config/styles.css")
 
-st.title("エネルギー分解解析 (Energy Decomposition Analysis)")
-st.markdown("分子間相互作用エネルギーを詳細に分解して解析します。")
+st.title("XYZ座標フラグメント分解解析 (XYZ Fragment Decomposition Analysis)")
+st.markdown("XYZ座標から2分子を自動分解してエネルギー分解解析を実行します。")
 
 
 # 分子入力セクション
 st.header("分子入力")
-col1, col2 = st.columns(2)
 
-with col1:
-    st.subheader("分子A")
-    smiles_input1 = st.text_input("分子AのSMILES", "N", key="smiles1")
+st.subheader("XYZ座標入力")
+xyz_input = st.text_area(
+    "複合体のXYZ座標を入力してください",
+    value="""6
+Water dimer
+O 0.0000 0.0000 0.0000
+H 0.7570 0.0000 0.5860
+H -0.7570 0.0000 0.5860
+O 0.0000 0.0000 3.0000
+H 0.7570 0.0000 3.5860
+H -0.7570 0.0000 3.5860""",
+    height=200,
+    key="xyz_input"
+)
+
+st.subheader("分子分解設定")
+manual_input = st.checkbox(
+    "手動XYZ入力モード",
+    value=False,
+    help="チェックすると分子A・Bの座標を個別に入力できます",
+    key="manual_input"
+)
+
+if not manual_input:
+    separation_method = st.selectbox(
+        "分子分離方法",
+        ["距離ベース分離", "クラスタリング分離"],
+        key="separation_method"
+    )
+
+    if separation_method == "距離ベース分離":
+        cutoff_distance = st.slider(
+            "分子間距離の閾値 (Å)",
+            min_value=1.0, max_value=5.0, value=2.5, step=0.1,
+            help="この距離以下の原子は同じ分子として扱われます"
+        )
+    elif separation_method == "クラスタリング分離":
+        cluster_method = st.selectbox(
+            "クラスタリング手法",
+            ["重心距離ベース", "密度ベース"],
+            key="cluster_method"
+        )
+        
+elif manual_input:
+    st.info("分子A、分子B、複合体ABのXYZ座標を個別に入力してください")
     
-    st.write("🔧 配座生成設定")
-    force_field1 = st.selectbox("Force Field", ["MMFF", "UFF"], key="force_field1")
-    num_conformers1 = st.number_input("Conformers数", value=100, min_value=1, max_value=10000, key="num_conformers1")
-
-with col2:
-    st.subheader("分子B") 
-    smiles_input2 = st.text_input("分子BのSMILES", "F", key="smiles2")
+    col1, col2 = st.columns(2)
     
-    st.write("🔧 配座生成設定")
-    force_field2 = st.selectbox("Force Field", ["MMFF", "UFF"], key="force_field2")
-    num_conformers2 = st.number_input("Conformers数", value=100, min_value=1, max_value=10000, key="num_conformers2")
-
-# 距離調整用スライダーを追加
-target_distance = st.slider("最近接原子間距離 (Å)", min_value=1.0, max_value=10.0, value=3.0, step=0.1)
+    with col1:
+        st.subheader("分子A")
+        xyz_molecule_a = st.text_area(
+            "分子AのXYZ座標",
+            value="""3
+Water molecule A
+O 0.0000 0.0000 0.0000
+H 0.7570 0.0000 0.5860
+H -0.7570 0.0000 0.5860""",
+            height=150,
+            key="xyz_molecule_a"
+        )
+    
+    with col2:
+        st.subheader("分子B")
+        xyz_molecule_b = st.text_area(
+            "分子BのXYZ座標",
+            value="""3
+Water molecule B
+O 0.0000 0.0000 3.0000
+H 0.7570 0.0000 3.5860
+H -0.7570 0.0000 3.5860""",
+            height=150,
+            key="xyz_molecule_b"
+        )
 
 # 分子構造の生成と表示
 st.header("分子構造の生成")
 
-# 分子構造の生成と表示
-st.header("分子構造の生成")
 
 # 分子構造生成の状態管理
 if 'molecules_generated' not in st.session_state:
@@ -60,131 +118,100 @@ if 'molecules_generated' not in st.session_state:
 
 # 分子構造生成ボタン
 if st.button("分子構造を生成", type="secondary") or st.session_state.molecules_generated:
+    # 入力データの確認
+    if not manual_input:
+        # XYZ入力の確認
+        if not xyz_input or not xyz_input.strip():
+            st.error("XYZ座標を入力してください")
+            st.stop()
+    elif manual_input:
+        # 手動入力の確認
+        if not xyz_molecule_a or not xyz_molecule_a.strip():
+            st.error("分子AのXYZ座標を入力してください")
+            st.stop()
+        if not xyz_molecule_b or not xyz_molecule_b.strip():
+            st.error("分子BのXYZ座標を入力してください")
+            st.stop()
+    
     try:
-        with st.spinner("分子構造を生成中..."):
-            # 各分子ごとに配座探索・最適化
-            st.write("🔍 分子Aの処理を開始...")
-            handler1 = MoleculeHandler(smiles_input1, input_type="smiles")
-            st.write(f"分子A: {handler1.mol.GetNumAtoms()} 原子")
+        with st.spinner("分子構造を解析中..."):
             
-            if handler1.mol.GetNumAtoms() > 1:  # 単原子でない場合のみ配座生成
-                try:
-                    st.write(f"分子A: {num_conformers1} 配座を{force_field1}で生成中...")
-                    conformers = handler1.generate_conformers(num_conformers=num_conformers1, forcefield=force_field1)
-                    if conformers:  # 配座生成が成功した場合
-                        try:
-                            handler1.keep_lowest_energy_conformer()
-                            st.success(f"分子A: {len(conformers)} 配座を生成し、最低エネルギー配座を選択しました")
-                        except RuntimeError as e:
-                            if "No conformer energies found" in str(e):
-                                st.warning("分子A: エネルギー情報が見つかりません。最初の配座を使用します")
-                                # 最初の配座を使用
-                                if handler1.mol.GetNumConformers() > 0:
-                                    try:
-                                        first_conf = handler1.mol.GetConformer(0)
-                                        handler1.mol.RemoveAllConformers()
-                                        handler1.mol.AddConformer(first_conf, assignId=True)
-                                    except:
-                                        # 配座の取得に失敗した場合は3D構造を再生成
-                                        st.warning("分子A: 配座情報の修復中...")
-                                        from rdkit.Chem import AllChem
-                                        AllChem.EmbedMolecule(handler1.mol)
-                                        AllChem.UFFOptimizeMolecule(handler1.mol)
-                            else:
-                                raise e
-                    else:
-                        st.warning("分子A: 配座生成に失敗しました。初期構造を使用します")
-                except Exception as e:
-                    st.warning(f"分子A: 配座生成でエラーが発生しました ({e})。初期構造を使用します")
-                    # 配座が全くない場合は3D構造を生成
-                    if handler1.mol.GetNumConformers() == 0:
-                        st.warning("分子A: 3D構造を再生成中...")
-                        from rdkit.Chem import AllChem
-                        AllChem.EmbedMolecule(handler1.mol)
-                        AllChem.UFFOptimizeMolecule(handler1.mol)
-            else:
-                st.info("分子A: 単原子分子のため配座生成をスキップします")
-            mol1 = handler1.mol
-
-            st.write("🔍 分子Bの処理を開始...")
-            handler2 = MoleculeHandler(smiles_input2, input_type="smiles")
-            st.write(f"分子B: {handler2.mol.GetNumAtoms()} 原子")
-            
-            if handler2.mol.GetNumAtoms() > 1:  # 単原子でない場合のみ配座生成
-                try:
-                    st.write(f"分子B: {num_conformers2} 配座を{force_field2}で生成中...")
-                    conformers = handler2.generate_conformers(num_conformers=num_conformers2, forcefield=force_field2)
-                    if conformers:  # 配座生成が成功した場合
-                        try:
-                            handler2.keep_lowest_energy_conformer()
-                            st.success(f"分子B: {len(conformers)} 配座を生成し、最低エネルギー配座を選択しました")
-                        except RuntimeError as e:
-                            if "No conformer energies found" in str(e):
-                                st.warning("分子B: エネルギー情報が見つかりません。最初の配座を使用します")
-                                # 最初の配座を使用
-                                if handler2.mol.GetNumConformers() > 0:
-                                    try:
-                                        first_conf = handler2.mol.GetConformer(0)
-                                        handler2.mol.RemoveAllConformers()
-                                        handler2.mol.AddConformer(first_conf, assignId=True)
-                                    except:
-                                        # 配座の取得に失敗した場合は3D構造を再生成
-                                        st.warning("分子B: 配座情報の修復中...")
-                                        from rdkit.Chem import AllChem
-                                        AllChem.EmbedMolecule(handler2.mol)
-                                        AllChem.UFFOptimizeMolecule(handler2.mol)
-                            else:
-                                raise e
-                    else:
-                        st.warning("分子B: 配座生成に失敗しました。初期構造を使用します")
-                except Exception as e:
-                    st.warning(f"分子B: 配座生成でエラーが発生しました ({e})。初期構造を使用します")
-                    # 配座が全くない場合は3D構造を生成
-                    if handler2.mol.GetNumConformers() == 0:
-                        st.warning("分子B: 3D構造を再生成中...")
-                        from rdkit.Chem import AllChem
-                        AllChem.EmbedMolecule(handler2.mol)
-                        AllChem.UFFOptimizeMolecule(handler2.mol)
-            else:
-                st.info("分子B: 単原子分子のため配座生成をスキップします")
-            mol2 = handler2.mol
-
-            # 最近接原子間距離でmol2を配置
-            st.write("🔍 分子を配置中...")
-            
-            # 分子の配座状態を確認
-            st.write(f"分子A配座数: {mol1.GetNumConformers()}, 分子B配座数: {mol2.GetNumConformers()}")
-            
-            # 配座が存在しない場合は3D構造を生成
-            if mol1.GetNumConformers() == 0:
-                st.warning("分子A: 配座が見つかりません。3D構造を生成中...")
-                from rdkit.Chem import AllChem
-                AllChem.EmbedMolecule(mol1)
-                AllChem.UFFOptimizeMolecule(mol1)
+            if not manual_input:
+                # 自動分離モード
+                st.write("🔍 XYZ座標の解析を開始...")
+                handler = MoleculeHandler(xyz_input, input_type="xyz")
+                st.write(f"全体構造: {handler.mol.GetNumAtoms()} 原子")
                 
-            if mol2.GetNumConformers() == 0:
-                st.warning("分子B: 配座が見つかりません。3D構造を生成中...")
-                from rdkit.Chem import AllChem
-                AllChem.EmbedMolecule(mol2)
-                AllChem.UFFOptimizeMolecule(mol2)
+                # 分子の分解処理
+                if separation_method == "距離ベース分離":
+                    st.write("🔍 距離ベース分離を実行中...")
+                    fragments = separate_molecules_by_distance(handler.mol, cutoff_distance=cutoff_distance)
+                    
+                elif separation_method == "クラスタリング分離":
+                    st.write(f"🔍 {cluster_method}による分離を実行中...")
+                    fragments = separate_molecules_by_clustering(handler.mol, n_clusters=2, method="simple")
+                
+                # 分離結果の確認
+                if len(fragments) >= 2:
+                    mol1 = fragments[0]
+                    mol2 = fragments[1]
+                    
+                    # 分離品質の分析
+                    analysis = analyze_fragment_separation(fragments)
+                    
+                    st.success(f"2つの分子に分離しました:")
+                    st.write(f"- 分子A: {mol1.GetNumAtoms()} 原子 ({analysis['fragment_formulas'][0]})")
+                    st.write(f"- 分子B: {mol2.GetNumAtoms()} 原子 ({analysis['fragment_formulas'][1]})")
+                    st.write(f"- 分離品質: {analysis['separation_quality']}")
+                    
+                    # 分子間距離を計算
+                    interaction_distance = get_fragment_interaction_distance(mol1, mol2)
+                    if interaction_distance:
+                        st.write(f"- 分子間最短距離: {interaction_distance:.2f} Å")
+                    
+                elif len(fragments) == 1:
+                    st.error("1つの分子しか検出されませんでした。分離パラメータを調整してください")
+                    st.stop()
+                else:
+                    st.error("分子の分離に失敗しました")
+                    st.stop()
+                
+                # 分離した分子の結合
+                from rdkit import Chem
+                combo = Chem.CombineMols(mol1, mol2)
+                
+            elif manual_input:
+                # 手動入力モード
+                st.write("🔍 手動入力XYZ座標の解析を開始...")
+                
+                # 各分子のMoleculeHandlerを作成
+                handler_a = MoleculeHandler(xyz_molecule_a, input_type="xyz")
+                handler_b = MoleculeHandler(xyz_molecule_b, input_type="xyz")
+                
+                mol1 = handler_a.mol
+                mol2 = handler_b.mol
+                
+                st.write(f"分子A: {mol1.GetNumAtoms()} 原子")
+                st.write(f"分子B: {mol2.GetNumAtoms()} 原子")
+                
+                # 分子の結合
+                from rdkit import Chem
+                combo = Chem.CombineMols(mol1, mol2)
+                
+                # 分子間距離を計算
+                interaction_distance = get_fragment_interaction_distance(mol1, mol2)
+                if interaction_distance:
+                    st.write(f"- 分子間最短距離: {interaction_distance:.2f} Å")
+                
+                st.success("手動入力された分子構造を正常に読み込みました")
             
-            try:
-                mol2_placed = MoleculeHandler.place_mol_by_closest_distance(mol1, mol2, target_distance=target_distance)
-                st.success(f"分子Bを分子Aから{target_distance} Å離れた位置に配置しました")
-            except Exception as e:
-                st.warning(f"分子の配置でエラーが発生しました ({e})。元の位置を使用します")
-                mol2_placed = mol2
-            
-            from rdkit import Chem
-            combo = Chem.CombineMols(mol1, mol2_placed)
-
-            # MoleculeHandlerの作成前に配座の状態を確認
+            # MoleculeHandlerの作成
             st.write("🔍 PySCF入力形式に変換中...")
             
             try:
                 handler = MoleculeHandler(combo, input_type="rdkit")
                 handler_1 = MoleculeHandler(mol1, input_type="rdkit")
-                handler_2 = MoleculeHandler(mol2_placed, input_type="rdkit")
+                handler_2 = MoleculeHandler(mol2, input_type="rdkit")
                 
                 # PySCF形式の原子座標を取得（改行区切り → セミコロン区切りに変換）
                 atom_coords_A = handler_1.to_pyscf_input().replace('\n', '; ')
@@ -203,59 +230,137 @@ if st.button("分子構造を生成", type="secondary") or st.session_state.mole
             st.session_state.atom_coords_B = atom_coords_B  
             st.session_state.atom_coords_AB = atom_coords_AB
             st.session_state.handler = handler
+            st.session_state.mol1 = mol1
+            st.session_state.mol2 = mol2
             
         st.success("分子構造の生成が完了しました")
         
-        # 配座探索設定の表示
-        st.subheader("配座探索設定")
-        st.info("💡 配座生成時に選択した分子力場による構造最適化が自動的に実行されます")
-        
-        conf_col1, conf_col2 = st.columns(2)
-        
-        with conf_col1:
-            st.info(f"**分子A**: {force_field1} force field, {num_conformers1} conformers")
-            
-        with conf_col2:
-            st.info(f"**分子B**: {force_field2} force field, {num_conformers2} conformers")
+        # 分離結果の表示
+        st.subheader("分離結果")
+        if not manual_input:
+            st.info(f"💡 {separation_method}による分子分離が完了しました")
+        else:
+            st.info(f"💡 手動XYZ入力による分子構造の読み込みが完了しました")
         
         # 分子構造を3つのカラムで表示
         col1, col2, col3 = st.columns(3)
         
         with col1:
             st.subheader("分子A")
+            st.write(f"原子数: {mol1.GetNumAtoms()}")
             with st.expander("原子座標 (PySCF形式)"):
                 st.code(st.session_state.atom_coords_A.replace('; ', '\n'))
         
         with col2:
             st.subheader("分子B")
+            st.write(f"原子数: {mol2.GetNumAtoms()}")
             with st.expander("原子座標 (PySCF形式)"):
                 st.code(st.session_state.atom_coords_B.replace('; ', '\n'))
         
         with col3:
             st.subheader("複合体AB")
+            st.write(f"原子数: {handler.mol.GetNumAtoms()}")
             with st.expander("原子座標 (PySCF形式)"):
                 st.code(st.session_state.atom_coords_AB.replace('; ', '\n'))
 
     except Exception as e:
-        st.error(f"分子の初期化に失敗しました: {e}")
+        st.error(f"分子の分解処理に失敗しました: {e}")
         st.session_state.molecules_generated = False
         st.stop()
 else:
-    st.info("分子構造を生成するには、上のボタンをクリックしてください。")
+    st.info("XYZ座標を入力して、分子構造生成ボタンをクリックしてください。")
 
 # 3D構造表示
 st.header("分子の3D構造")
 
 if st.session_state.get('molecules_generated', False):
+    # 表示する分子の選択
+    display_option = st.radio(
+        "表示する分子を選択してください",
+        ["複合体AB", "分子A", "分子B"],
+        key="display_option",
+        horizontal=True
+    )
+    
     try:
-        mol_block = st.session_state.handler.generate_3d_molblock()
+        # 選択された分子に応じてMolオブジェクトを決定
+        if display_option == "複合体AB":
+            display_mol = st.session_state.handler.mol
+            display_title = f"複合体AB ({display_mol.GetNumAtoms()} 原子)"
+        elif display_option == "分子A":
+            # 分子AのMoleculeHandlerを作成
+            mol_a_handler = MoleculeHandler(st.session_state.mol1, input_type="rdkit")
+            display_mol = mol_a_handler.mol
+            display_title = f"分子A ({display_mol.GetNumAtoms()} 原子)"
+        else:  # 分子B
+            # 分子BのMoleculeHandlerを作成
+            mol_b_handler = MoleculeHandler(st.session_state.mol2, input_type="rdkit")
+            display_mol = mol_b_handler.mol
+            display_title = f"分子B ({display_mol.GetNumAtoms()} 原子)"
+        
+        st.subheader(display_title)
+        
+        # 3D構造の表示
+        if display_option == "複合体AB":
+            mol_block = st.session_state.handler.generate_3d_molblock()
+        elif display_option == "分子A":
+            mol_block = mol_a_handler.generate_3d_molblock()
+        else:  # 分子B
+            mol_block = mol_b_handler.generate_3d_molblock()
+        
+        # 分子情報の表示
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**分子情報:**")
+            st.write(f"原子数: {display_mol.GetNumAtoms()}")
+            
+            # 分子式を計算
+            try:
+                from rdkit.Chem import rdMolDescriptors
+                formula = rdMolDescriptors.CalcMolFormula(display_mol)
+                st.write(f"分子式: {formula}")
+            except:
+                st.write("分子式: 計算できませんでした")
+        
+        with col2:
+            st.write("**表示設定:**")
+            # スタイルの選択
+            style_option = st.selectbox(
+                "表示スタイル",
+                ["sphere", "stick", "ball_and_stick"],
+                index=0,
+                key=f"style_{display_option}"
+            )
+            
+            # 追加設定
+            if style_option == "stick":
+                radius = st.slider(
+                    "結合の太さ",
+                    min_value=0.05, max_value=0.3, value=0.1, step=0.05,
+                    key=f"radius_{display_option}"
+                )
+            # sphereとball_and_stickは自動設定のみ
+        
+        # スタイルに応じてビューアーを設定
         viewer = py3Dmol.view(width=600, height=400)
         viewer.addModel(mol_block, "mol")
-        viewer.setStyle({"stick": {}})
+        
+        if style_option == "stick":
+            viewer.setStyle({"stick": {"radius": radius}})
+        elif style_option == "sphere":
+            # ファンデルワールス半径を使用
+            viewer.setStyle({"sphere": {"scale": 1.0}})  # scaleでファンデルワールス半径の倍率を指定
+        elif style_option == "ball_and_stick":
+            # 自動設定：ファンデルワールス半径を使用
+            viewer.setStyle({"sphere": {"scale": 0.5}, "stick": {"radius": 0.1}})
+        
         viewer.zoomTo()
         stmol.showmol(viewer, height=400)
+        
     except Exception as e:
         st.warning(f"3D構造の表示ができませんでした: {e}")
+        st.error(f"詳細なエラー: {str(e)}")
 else:
     st.info("3D構造を表示するには、まず分子構造を生成してください。")
 
@@ -303,11 +408,12 @@ else:
 
 # 計算方法と参考文献の表示
 with st.expander("計算方法と参考文献を表示", expanded=False):
-    st.markdown("### 🧪 Method for Energy Decomposition Analysis")
+    st.markdown("### 🧪 Method for XYZ Fragment Decomposition Analysis")
     st.markdown(
         "**Computational Details**  \n"
-        "Molecular structures were processed using RDKit [1] for initial 3D coordinate generation and conformational search.  \n"
-        f"Conformational search was performed using the {force_field1} force field for molecule A and {force_field2} force field for molecule B.  \n"
+        "Complex molecular structures were processed from XYZ coordinates using RDKit [1] for molecular fragment decomposition.  \n"
+        f"Fragment separation was performed using **{'手動XYZ入力' if manual_input else '自動分子分離'}** method"
+        f"{f' ({separation_method})' if not manual_input else ''}.  \n"
         f"Single-point energy calculations were performed at the **{theory}/{basis_set}** level using PySCF [2].  \n"
         "The Energy Decomposition Analysis (EDA) provides detailed insights into intermolecular interactions by decomposing the total electronic energy into:  \n"
         "- **Nuclear repulsion energy (E_nuc)**: Electrostatic repulsion between nuclei  \n"
@@ -319,7 +425,7 @@ with st.expander("計算方法と参考文献を表示", expanded=False):
         "where E_AB is the energy of the complex and E_A, E_B are the energies of isolated fragments.  \n"
         "Each energy component is decomposed to understand the physical origins of intermolecular interactions.  \n"
         "Energy values are provided in Hartree (Ha) and converted to kcal/mol for comparative analysis (1 Ha = 627.509 kcal/mol).  \n"
-        "This decomposition analysis is essential for understanding non-covalent interactions, hydrogen bonding, and van der Waals forces."
+        "This decomposition analysis is essential for understanding non-covalent interactions, hydrogen bonding, and van der Waals forces in pre-formed complexes."
     )
     st.markdown("---")
     st.markdown(
@@ -335,16 +441,28 @@ with st.expander("計算方法と参考文献を表示", expanded=False):
 if st.button("計算実行", type="primary"):
     if not st.session_state.get('molecules_generated', False):
         st.warning("まず分子構造を生成してください。")
-    elif smiles_input1 and smiles_input2:
+    elif xyz_input and xyz_input.strip():
         try:
             # セッション状態から座標を取得
             atom_coords_A = st.session_state.atom_coords_A
             atom_coords_B = st.session_state.atom_coords_B
             atom_coords_AB = st.session_state.atom_coords_AB
             
+            # 分子からSMILES文字列を生成
+            from rdkit import Chem
+            mol1 = st.session_state.mol1
+            mol2 = st.session_state.mol2
+            
+            try:
+                smiles_A = Chem.MolToSmiles(mol1)
+                smiles_B = Chem.MolToSmiles(mol2)
+            except:
+                smiles_A = f"Fragment_A_{mol1.GetNumAtoms()}atoms"
+                smiles_B = f"Fragment_B_{mol2.GetNumAtoms()}atoms"
+            
             # 計算パラメータの準備
-            compound_names = [f"Mol_A_{smiles_input1}", f"Mol_B_{smiles_input2}", f"Complex_{smiles_input1}_{smiles_input2}"]
-            smiles_list = [smiles_input1, smiles_input2, f"{smiles_input1}.{smiles_input2}"]
+            compound_names = [f"Mol_A_{smiles_A}", f"Mol_B_{smiles_B}", f"Complex_{smiles_A}_{smiles_B}"]
+            smiles_list = [smiles_A, smiles_B, f"{smiles_A}.{smiles_B}"]
             atom_inputs = [atom_coords_A, atom_coords_B, atom_coords_AB]
             
             # プログレスバーと状態表示
@@ -502,4 +620,4 @@ if st.button("計算実行", type="primary"):
             st.error(f"計算中にエラーが発生しました: {str(e)}")
             st.exception(e)
     else:
-        st.warning("分子A、分子B両方のSMILESを入力してください")
+        st.warning("XYZ座標を入力してください")
