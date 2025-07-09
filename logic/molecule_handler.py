@@ -447,3 +447,119 @@ class MoleculeHandler:
 
         return mol2
 
+    @staticmethod
+    def place_mol_for_ch_pi_interaction(mol1, mol2, target_distance=2.5, approach_angle=0.0, rotation_angle=0.0):
+        """
+        C-H π相互作用用の分子配置関数
+        mol1: ベンゼン環などの π系分子
+        mol2: メタンなどのC-H結合を持つ分子
+        target_distance: ベンゼン環の重心から配置分子までの距離（Å）
+        approach_angle: 接近角度（度）- 0°は垂直（π面に垂直）、90°は平行
+        rotation_angle: 回転角度（度）- ベンゼン環の周りでの回転
+        """
+        from rdkit.Chem import Descriptors
+        import math
+        
+        conf1 = mol1.GetConformer()
+        conf2 = mol2.GetConformer()
+        
+        # ベンゼン環の重心を計算
+        coords1 = np.array([list(conf1.GetAtomPosition(i)) for i in range(mol1.GetNumAtoms())])
+        centroid1 = np.mean(coords1, axis=0)
+        
+        # ベンゼン環の法線ベクトルを計算（最初の3つの原子から平面を定義）
+        if mol1.GetNumAtoms() >= 3:
+            v1 = coords1[1] - coords1[0]
+            v2 = coords1[2] - coords1[0]
+            normal = np.cross(v1, v2)
+            normal = normal / np.linalg.norm(normal)
+        else:
+            normal = np.array([0.0, 0.0, 1.0])  # デフォルト
+        
+        # 接近角度を適用
+        approach_rad = math.radians(approach_angle)
+        
+        # 回転角度を適用
+        rotation_rad = math.radians(rotation_angle)
+        
+        # 配置ベクトルを計算
+        # 垂直成分
+        vertical_component = normal * math.cos(approach_rad)
+        
+        # 水平成分（任意の方向）
+        # ベンゼン環の平面内での方向を決定
+        tangent = np.array([1.0, 0.0, 0.0])
+        if abs(np.dot(normal, tangent)) > 0.9:
+            tangent = np.array([0.0, 1.0, 0.0])
+        
+        # 法線ベクトルに垂直な方向を計算
+        tangent = tangent - np.dot(tangent, normal) * normal
+        tangent = tangent / np.linalg.norm(tangent)
+        
+        # 回転を適用
+        cos_rot = math.cos(rotation_rad)
+        sin_rot = math.sin(rotation_rad)
+        
+        # 法線ベクトルの周りで回転
+        bitangent = np.cross(normal, tangent)
+        rotated_tangent = cos_rot * tangent + sin_rot * bitangent
+        
+        horizontal_component = rotated_tangent * math.sin(approach_rad)
+        
+        # 最終的な配置方向
+        placement_direction = vertical_component + horizontal_component
+        placement_direction = placement_direction / np.linalg.norm(placement_direction)
+        
+        # mol2の重心を計算
+        coords2 = np.array([list(conf2.GetAtomPosition(i)) for i in range(mol2.GetNumAtoms())])
+        centroid2 = np.mean(coords2, axis=0)
+        
+        # 目標位置を計算
+        target_position = centroid1 + placement_direction * target_distance
+        
+        # 移動ベクトルを計算
+        move_vector = target_position - centroid2
+        
+        # mol2全体を移動
+        for i in range(mol2.GetNumAtoms()):
+            pos = conf2.GetAtomPosition(i)
+            new_pos = np.array([pos.x, pos.y, pos.z]) + move_vector
+            conf2.SetAtomPosition(i, new_pos.tolist())
+        
+        return mol2
+
+    @staticmethod
+    def place_mol_by_specific_atoms(mol1, mol2, atom_idx1, atom_idx2, target_distance=2.5):
+        """
+        特定の原子間距離で分子を配置する
+        mol1, mol2: RDKit Molオブジェクト
+        atom_idx1: mol1の原子インデックス
+        atom_idx2: mol2の原子インデックス
+        target_distance: 目標距離（Å）
+        """
+        conf1 = mol1.GetConformer()
+        conf2 = mol2.GetConformer()
+        
+        # 指定された原子の座標を取得
+        pos1 = np.array(list(conf1.GetAtomPosition(atom_idx1)))
+        pos2 = np.array(list(conf2.GetAtomPosition(atom_idx2)))
+        
+        # 現在の距離
+        current_distance = np.linalg.norm(pos2 - pos1)
+        
+        # 移動ベクトルを計算
+        if current_distance > 0:
+            direction = (pos2 - pos1) / current_distance
+            required_move = (target_distance - current_distance) * direction
+        else:
+            # 同じ位置にある場合は適当にずらす
+            required_move = np.array([target_distance, 0.0, 0.0])
+        
+        # mol2全体を移動
+        for i in range(mol2.GetNumAtoms()):
+            pos = conf2.GetAtomPosition(i)
+            new_pos = np.array([pos.x, pos.y, pos.z]) + required_move
+            conf2.SetAtomPosition(i, new_pos.tolist())
+        
+        return mol2
+

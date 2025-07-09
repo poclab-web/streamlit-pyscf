@@ -45,8 +45,90 @@ with col2:
     force_field2 = st.selectbox("Force Field", ["MMFF", "UFF"], key="force_field2")
     num_conformers2 = st.number_input("Conformers数", value=100, min_value=1, max_value=10000, key="num_conformers2")
 
-# 距離調整用スライダーを追加
-target_distance = st.slider("最近接原子間距離 (Å)", min_value=1.0, max_value=10.0, value=3.0, step=0.1)
+# 分子配置制御オプション
+st.header("分子配置制御")
+
+# 配置方法の選択
+placement_method = st.selectbox(
+    "配置方法",
+    ["最近接原子間距離", "C-H π相互作用", "特定原子間距離"],
+    key="placement_method"
+)
+
+if placement_method == "最近接原子間距離":
+    target_distance = st.slider("最近接原子間距離 (Å)", min_value=1.0, max_value=10.0, value=3.0, step=0.1)
+    
+elif placement_method == "C-H π相互作用":
+    st.info("💡 C-H π相互作用の計算に適した配置を行います（分子Aがπ系、分子BがC-H結合）")
+    
+    # プリセット設定
+    preset = st.selectbox(
+        "プリセット設定",
+        ["カスタム", "典型的なC-H π", "T字型配置", "平行配置"],
+        key="ch_pi_preset"
+    )
+    
+    # デフォルト値を設定
+    default_distance = 3.5
+    default_approach = 0.0
+    default_rotation = 0.0
+    
+    if preset == "典型的なC-H π":
+        default_distance = 3.5
+        default_approach = 0.0
+        default_rotation = 0.0
+    elif preset == "T字型配置":
+        default_distance = 3.0
+        default_approach = 90.0
+        default_rotation = 0.0
+    elif preset == "平行配置":
+        default_distance = 4.0
+        default_approach = 90.0
+        default_rotation = 90.0
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        target_distance = st.slider("重心間距離 (Å)", min_value=2.0, max_value=8.0, value=default_distance, step=0.1)
+        approach_angle = st.slider("接近角度 (°)", min_value=0.0, max_value=90.0, value=default_approach, step=5.0,
+                                 help="0°: π面に垂直（典型的なC-H π相互作用）、90°: π面に平行")
+    
+    with col2:
+        rotation_angle = st.slider("回転角度 (°)", min_value=0.0, max_value=360.0, value=default_rotation, step=15.0,
+                                 help="π系分子の周りでの回転")
+        
+        # 配置の視覚的説明
+        st.markdown("""
+        **配置の説明:**
+        - **重心間距離**: π系分子の重心からC-H分子までの距離
+        - **接近角度**: 0°でπ面に垂直（典型的なC-H π）、90°でπ面に平行
+        - **回転角度**: π系分子の周りでの回転位置
+        """)
+        
+    # 推奨設定の表示
+    st.markdown("""
+    **推奨設定:**
+    - **メタン-ベンゼン**: 距離 3.5 Å, 角度 0°（垂直）
+    - **エタン-ベンゼン**: 距離 3.2 Å, 角度 0°（垂直）
+    - **T字型配置**: 距離 3.0 Å, 角度 90°（平行）
+    """)
+        
+elif placement_method == "特定原子間距離":
+    st.info("💡 特定の原子間距離を制御して分子を配置します")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        atom_idx1 = st.number_input("分子Aの原子インデックス", min_value=0, value=0, step=1)
+        atom_idx2 = st.number_input("分子Bの原子インデックス", min_value=0, value=0, step=1)
+    
+    with col2:
+        target_distance = st.slider("原子間距離 (Å)", min_value=1.0, max_value=10.0, value=3.0, step=0.1)
+        
+        st.markdown("""
+        **使用方法:**
+        1. 分子構造生成後に原子座標を確認
+        2. 制御したい原子のインデックスを入力
+        3. 目標距離を設定
+        """)
 
 # 分子構造の生成と表示
 st.header("分子構造の生成")
@@ -168,9 +250,51 @@ if st.button("分子構造を生成", type="secondary") or st.session_state.mole
                 AllChem.EmbedMolecule(mol2)
                 AllChem.UFFOptimizeMolecule(mol2)
             
+            # 配置方法に応じて分子を配置
             try:
-                mol2_placed = MoleculeHandler.place_mol_by_closest_distance(mol1, mol2, target_distance=target_distance)
-                st.success(f"分子Bを分子Aから{target_distance} Å離れた位置に配置しました")
+                if placement_method == "最近接原子間距離":
+                    mol2_placed = MoleculeHandler.place_mol_by_closest_distance(mol1, mol2, target_distance=target_distance)
+                    st.success(f"分子Bを分子Aから{target_distance} Å離れた位置に配置しました")
+                    
+                elif placement_method == "C-H π相互作用":
+                    # 変数が定義されていない場合のデフォルト値
+                    if 'approach_angle' not in locals():
+                        approach_angle = 0.0
+                    if 'rotation_angle' not in locals():
+                        rotation_angle = 0.0
+                        
+                    mol2_placed = MoleculeHandler.place_mol_for_ch_pi_interaction(
+                        mol1, mol2, 
+                        target_distance=target_distance,
+                        approach_angle=approach_angle,
+                        rotation_angle=rotation_angle
+                    )
+                    st.success(f"C-H π相互作用用の配置を完了しました")
+                    st.info(f"重心間距離: {target_distance} Å, 接近角度: {approach_angle}°, 回転角度: {rotation_angle}°")
+                    
+                elif placement_method == "特定原子間距離":
+                    # 変数が定義されていない場合のデフォルト値
+                    if 'atom_idx1' not in locals():
+                        atom_idx1 = 0
+                    if 'atom_idx2' not in locals():
+                        atom_idx2 = 0
+                        
+                    # 原子インデックスの範囲チェック
+                    if atom_idx1 >= mol1.GetNumAtoms():
+                        st.error(f"分子Aの原子インデックス {atom_idx1} が範囲外です (0-{mol1.GetNumAtoms()-1})")
+                        mol2_placed = mol2
+                    elif atom_idx2 >= mol2.GetNumAtoms():
+                        st.error(f"分子Bの原子インデックス {atom_idx2} が範囲外です (0-{mol2.GetNumAtoms()-1})")
+                        mol2_placed = mol2
+                    else:
+                        mol2_placed = MoleculeHandler.place_mol_by_specific_atoms(
+                            mol1, mol2, 
+                            atom_idx1=atom_idx1, 
+                            atom_idx2=atom_idx2,
+                            target_distance=target_distance
+                        )
+                        st.success(f"原子 {atom_idx1} と原子 {atom_idx2} 間の距離を{target_distance} Åに設定しました")
+                
             except Exception as e:
                 st.warning(f"分子の配置でエラーが発生しました ({e})。元の位置を使用します")
                 mol2_placed = mol2
@@ -203,6 +327,9 @@ if st.button("分子構造を生成", type="secondary") or st.session_state.mole
             st.session_state.atom_coords_B = atom_coords_B  
             st.session_state.atom_coords_AB = atom_coords_AB
             st.session_state.handler = handler
+            st.session_state.current_placement_method = placement_method
+            st.session_state.mol1 = mol1
+            st.session_state.mol2_placed = mol2_placed
             
         st.success("分子構造の生成が完了しました")
         
@@ -225,16 +352,49 @@ if st.button("分子構造を生成", type="secondary") or st.session_state.mole
             st.subheader("分子A")
             with st.expander("原子座標 (PySCF形式)"):
                 st.code(st.session_state.atom_coords_A.replace('; ', '\n'))
+            
+            # 原子インデックス情報を表示
+            current_placement = st.session_state.get('current_placement_method', placement_method)
+            if current_placement == "特定原子間距離":
+                with st.expander("原子インデックス情報"):
+                    atom_info_A = []
+                    for i in range(mol1.GetNumAtoms()):
+                        atom = mol1.GetAtomWithIdx(i)
+                        atom_info_A.append(f"{i}: {atom.GetSymbol()}")
+                    st.text("\n".join(atom_info_A))
         
         with col2:
             st.subheader("分子B")
             with st.expander("原子座標 (PySCF形式)"):
                 st.code(st.session_state.atom_coords_B.replace('; ', '\n'))
+            
+            # 原子インデックス情報を表示
+            current_placement = st.session_state.get('current_placement_method', placement_method)
+            if current_placement == "特定原子間距離":
+                with st.expander("原子インデックス情報"):
+                    atom_info_B = []
+                    for i in range(mol2_placed.GetNumAtoms()):
+                        atom = mol2_placed.GetAtomWithIdx(i)
+                        atom_info_B.append(f"{i}: {atom.GetSymbol()}")
+                    st.text("\n".join(atom_info_B))
         
         with col3:
             st.subheader("複合体AB")
             with st.expander("原子座標 (PySCF形式)"):
                 st.code(st.session_state.atom_coords_AB.replace('; ', '\n'))
+            
+            # 配置情報を表示
+            with st.expander("配置情報"):
+                current_placement = st.session_state.get('current_placement_method', placement_method)
+                if current_placement == "最近接原子間距離":
+                    st.text(f"最近接原子間距離: {target_distance} Å")
+                elif current_placement == "C-H π相互作用":
+                    st.text(f"重心間距離: {target_distance} Å")
+                    st.text(f"接近角度: {approach_angle}°")
+                    st.text(f"回転角度: {rotation_angle}°")
+                elif current_placement == "特定原子間距離":
+                    st.text(f"原子 {atom_idx1} - 原子 {atom_idx2}")
+                    st.text(f"距離: {target_distance} Å")
 
     except Exception as e:
         st.error(f"分子の初期化に失敗しました: {e}")
@@ -319,7 +479,12 @@ with st.expander("計算方法と参考文献を表示", expanded=False):
         "where E_AB is the energy of the complex and E_A, E_B are the energies of isolated fragments.  \n"
         "Each energy component is decomposed to understand the physical origins of intermolecular interactions.  \n"
         "Energy values are provided in Hartree (Ha) and converted to kcal/mol for comparative analysis (1 Ha = 627.509 kcal/mol).  \n"
-        "This decomposition analysis is essential for understanding non-covalent interactions, hydrogen bonding, and van der Waals forces."
+        "This decomposition analysis is essential for understanding non-covalent interactions, hydrogen bonding, and van der Waals forces.  \n"
+        "For C-H π interactions, the tool provides specialized molecular placement options:  \n"
+        "- **Centroid distance control**: Distance between the π-system centroid and the C-H molecule  \n"
+        "- **Approach angle**: 0° for perpendicular approach (typical C-H π geometry), 90° for parallel approach  \n"
+        "- **Rotation angle**: Rotation around the π-system to explore different interaction orientations  \n"
+        "These geometric parameters are crucial for accurately modeling C-H π interactions in molecular complexes."
     )
     st.markdown("---")
     st.markdown(
@@ -329,7 +494,9 @@ with st.expander("計算方法と参考文献を表示", expanded=False):
         "[3] PocLab streamlit-pyscf: Quantum chemistry web interface. [https://github.com/poclab-web/streamlit-pyscf](https://github.com/poclab-web/streamlit-pyscf)  \n"
         "[4] Szabo, A.; Ostlund, N. S. *Modern Quantum Chemistry: Introduction to Advanced Electronic Structure Theory*; Dover Publications: New York, 1996.  \n"
         "[5] Helgaker, T.; Jørgensen, P.; Olsen, J. *Molecular Electronic-Structure Theory*; Wiley: Chichester, 2000.  \n"
-        "[6] Kitaura, K.; Morokuma, K. A new energy decomposition scheme for molecular interactions within the Hartree-Fock approximation. **Int. J. Quantum Chem.** *1976*, **10**, 325-340. DOI: [10.1002/qua.560100211](https://doi.org/10.1002/qua.560100211)"
+        "[6] Kitaura, K.; Morokuma, K. A new energy decomposition scheme for molecular interactions within the Hartree-Fock approximation. **Int. J. Quantum Chem.** *1976*, **10**, 325-340. DOI: [10.1002/qua.560100211](https://doi.org/10.1002/qua.560100211)  \n"
+        "[7] Nishio, M. *et al.* CH/π hydrogen bonds in crystals. **CrystEngComm** *2004*, **6**, 130-158. DOI: [10.1039/B313104A](https://doi.org/10.1039/B313104A)  \n"
+        "[8] Takahashi, O. *et al.* Relevance of weak hydrogen bonds in the conformation of biological molecules and in the stabilization of supramolecular structures. **Chem. Rev.** *2010*, **110**, 6049-6076. DOI: [10.1021/cr100072x](https://doi.org/10.1021/cr100072x)"
     )
 
 if st.button("計算実行", type="primary"):
