@@ -1,6 +1,8 @@
 """
 複数計算についてのまとめについて行う。
 """
+import streamlit as st
+from utils.module import load_css
 
 import streamlit as st
 import pandas as pd
@@ -18,64 +20,11 @@ from logic.output_handler import (
     convert_energy_units
 )
 
-from logic.database import get_molecule_from_sqlite, get_summary_statistics
-
-# データベースパス
-db_path = "data/energy_db.sqlite"
+# カスタムCSSを適用
+load_css("config/styles.css")
 
 # dataフォルダ内のフォルダ名を取得して表示
 data_path = "data"  # dataフォルダのパス
-
-# データベースの中を検索
-st.title("🧪 計算したデータのsummary")
-
-# 統計の表示
-st.subheader("📊 データベースに保存済み分子の概要")
-try:
-    total, methods, bases, solvents = get_summary_statistics(db_path)
-
-    st.markdown(f"- **登録分子数**: {total}")
-    st.markdown(f"- **使用理論**: {', '.join(methods) if methods else 'なし'}")
-    st.markdown(f"- **基底関数**: {', '.join(bases) if bases else 'なし'}")
-    if solvents:
-        st.markdown(f"- **使用溶媒モデル**: {', '.join(solvents)}")
-    else:
-        st.markdown("- **使用溶媒モデル**: なし")
-
-except Exception as e:
-    st.error(f"データベース読み込みエラー: {e}")
-
-with st.expander("データベース検索"):
-    # 入力フォーム
-    smiles = st.text_input("SMILES", "CCO")
-    method = st.selectbox("計算理論", ["B3LYP", "HF", "MP2", "PBE", "M06-2X"])
-    basis = st.selectbox("基底関数", ["6-31G*", "def2-SVP", "cc-pVDZ"])
-    spin = st.number_input("スピン多重度", value=1, step=1)
-    charge = st.number_input("電荷", value=0, step=1)
-    temperature = st.number_input("温度 (K)", value=298.15)
-    pressure = st.number_input("圧力 (atm)", value=1.0)
-
-    # 溶媒モデル（オプション）
-    use_solvent = st.checkbox("溶媒効果を使用する")
-    solvent = st.text_input("溶媒名", "PCM") if use_solvent else None
-    dielectric = st.number_input("誘電率", value=78.4) if use_solvent else None
-
-
-    # 検索実行
-    if st.button("検索"):
-        result = get_molecule_from_sqlite(smiles, method, basis, spin, charge,
-                                        solvent, dielectric, temperature, pressure,
-                                        db_path=db_path)
-        if result:
-            st.success(f"✅ 分子ID: {result['id']} のデータを取得しました。")
-            st.write(f"**Gibbs自由エネルギー**: {result['g_tot']} Hartree")
-            st.write(f"**ZPE**: {result['zpe']} Hartree")
-
-            if result["frequencies"]:
-                st.write("**振動数（cm⁻¹）**:")
-                st.json(result["frequencies"])
-        else:
-            st.warning("❌ 一致するデータが見つかりませんでした。")
 
 st.subheader("📊 計算済みchkファイルの検索")
 # chkファイルの検索

@@ -1,0 +1,82 @@
+{
+  "metadata": {
+    "version": "1.1.0",
+    "last_updated": "2025-07-15",
+    "description": "Default page visibility settings for Computational Chemistry Tool"
+  },
+  "categories": {
+    "basic_calculation": {
+      "name": "🧪 基本計算",
+      "description": "分子構造最適化、一点エネルギー計算、配座解析",
+      "keywords": ["general", "optimization", "structure", "singlepoint", "conformational", "opt"],
+      "icon": ":material/science:",
+      "pages": {
+        "01_GeneralCalculation.py": true,
+        "02_StructureCheck.py": true,
+        "03_Singlepointcalculation.py": true,
+        "04_Optimization.py": true,
+        "05_ConformationalSearch.py": true,
+        "06_OPTandFreq.py": true
+      }
+    },
+    "visualization_analysis": {
+      "name": "� 可視化と解析",
+      "description": "分子軌道可視化、エネルギー分解解析、フラグメント解析",
+      "keywords": ["visualization", "energy", "decomposition", "fragment", "analysis"],
+      "icon": ":material/analytics:",
+      "pages": {
+        "07_Visualization.py": true,
+        "13_EnergyDecompositionAnalysis.py": true,
+        "13_xyz_fragment_decomposition.py": true,
+        "13_ConformationalEnergyDecomposition.py": true
+      }
+    },
+    "property_calculation": {
+      "name": "⚡ 物性計算",
+      "description": "イオン化ポテンシャル、溶媒効果、結合解離エネルギー、pKa計算",
+      "keywords": ["ionization", "solvation", "bond", "pka", "property"],
+      "icon": ":material/bolt:",
+      "pages": {
+        "09_IonizationPotencial.py": true,
+        "09_Solvation.py": true,
+        "10_BondDissociationEnergy.py": true,
+        "11_Pka.py": true
+      }
+    },
+    "spectrum_calculation": {
+      "name": "📊 スペクトル計算",
+      "description": "IR、NMR、UV-Visスペクトル予測、分極率計算",
+      "keywords": ["spectrum", "ir", "nmr", "uv", "polarizability"],
+      "icon": ":material/graphic_eq:",
+      "pages": {
+        "08_PropertyCalculationIR.py": true,
+        "08_PropertyCalculationNMR.py": true,
+        "08_PropertyCalculationPolarizability.py": true,
+        "12_UV_SpectrumPrediction.py": true
+      }
+    },
+    "transition_state": {
+      "name": "🔄 遷移状態計算",
+      "description": "遷移状態探索、反応経路計算、IRC解析",
+      "keywords": ["transition", "neb", "ts", "irc", "reaction"],
+      "icon": ":material/timeline:",
+      "pages": {
+        "14_NEB.py": true,
+        "14_TS.py": true,
+        "15_IRC.py": true
+      }
+    },
+    "system_settings": {
+      "name": "⚙️ システム・設定",
+      "description": "設定管理、データベース、結果集計",
+      "keywords": ["settings", "database", "summarization", "system"],
+      "icon": ":material/settings:",
+      "pages": {
+        "16_DataBase.py": true,
+        "16_Summarization.py": true,
+        "99_SystemSettings.py": true,
+        "PageSettings.py": true
+      }
+    }
+  }
+}

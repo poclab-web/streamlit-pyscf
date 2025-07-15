@@ -151,10 +151,20 @@ if st.button("Run Single Point Calculation"):
         pyscf_input = handler.to_pyscf_input()
 
         st.write("Running quantum chemistry calculation...")
-        energy, molden_file = run_quantum_calculation(
+        result = run_quantum_calculation(
             compound_name, smiles, pyscf_input, basis_set, theory, charge=charge, spin=spin, solvent_model=solvent_model, eps=eps, symmetry=symmetry
         )
-        
+        energy = result["energy"]
+        molden_file = result["molden_file"]
+
+        # --- エネルギー分解の表示 ---
+        st.subheader("Energy Decomposition")
+        st.write(f"核間反発エネルギー (E_nuc): {result['E_nuc']:.6f} Hartree")
+        st.write(f"電子-核引力項 (E_core): {result['E_core']:.6f} Hartree")
+        st.write(f"クーロン項 (E_J): {result['E_J']:.6f} Hartree")
+        st.write(f"交換項 (E_K): {result['E_K']:.6f} Hartree")
+        st.write(f"電子エネルギー (E_elec): {result['E_elec']:.6f} Hartree")
+
         # 計算結果を表示
         st.success(f"Calculated SinglePoint Energy: {energy} Hartree")
         st.info(f"Results saved in: {molden_file}")

@@ -7,12 +7,12 @@ PySCFの計算結果は多くの場合、数値や配列形式で出力される
 エネルギー値の整形
 構造最適化後の座標情報の整形
 フォノン周波数や振動モードの整理
-
 """
 
 import os
 import re
 import streamlit as st
+
 
 def format_energy_output(energy):
     """
@@ -189,3 +189,29 @@ def safe_dict(d):
     if not isinstance(d, dict):
         return str(d)
     return {k: safe_real(v) for k, v in d.items()}
+
+
+
+def extract_energy(g_dict, key="G_tot", fallback_key="E_scf_only"):
+    """
+    thermo 辞書またはその中の 'thermo_info' からエネルギー値を取得。
+    なければ fallback_key を見る。両方なければエラー。
+    """
+    value = g_dict.get(key)
+
+    # トップレベルに無ければ thermo_info を見る
+    if value is None and "thermo_info" in g_dict:
+        thermo = g_dict["thermo_info"]
+        value = thermo.get(key)
+        if value is None and fallback_key:
+            value = thermo.get(fallback_key)
+
+    elif value is None and fallback_key:
+        value = g_dict.get(fallback_key)
+
+    if isinstance(value, tuple):
+        return value[0]
+    elif isinstance(value, (float, int)):
+        return float(value)
+    else:
+        raise ValueError(f"{key}（または {fallback_key}）の形式が不正です。値: {value}")

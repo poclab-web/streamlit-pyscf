@@ -3,6 +3,8 @@
 """
 
 import streamlit as st
+from utils.module import load_css
+
 import os
 import pandas as pd
 from rdkit import Chem
@@ -14,7 +16,13 @@ from logic.calculation import (
     calculate_vibrational_frequencies
 )
 
+# カスタムCSSを適用
+load_css("config/styles.css")
+
 st.title("General Calculation Workflow")
+
+st.warning("調整中です。まだ使用しないでください")
+st.divider()
 
 # 1. 構造入力
 st.header("1. 構造の入力")
@@ -93,7 +101,7 @@ if st.button("全自動計算スタート"):
 
             st.info(f"構造最適化を実行中... (配座ID: {conf_id})")
             pyscf_input = xyz_str
-            final_geometry = run_geometry_optimization(
+            final_geometry, mf = run_geometry_optimization(
                 compound_name, smiles, pyscf_input, opt_basis, opt_theory,
                 charge=charge, spin=spin, solvent_model="None", eps=None, symmetry=False, conv_params={}, maxsteps=100
             )
@@ -106,11 +114,11 @@ if st.button("全自動計算スタート"):
                 atom_lines = [line for line in lines if len(line.split()) == 4]
                 return "\n".join(atom_lines)
             pyscf_input = xyz_string_to_pyscf_atom(final_geometry)
-            energy, molden_file = run_quantum_calculation(
+            result = run_quantum_calculation(
                 compound_name, smiles, pyscf_input, sp_basis, sp_theory,
                 charge=charge, spin=spin, solvent_model="None", eps=None, symmetry=False
             )
-            st.success(f"1点エネルギー: {energy} Hartree（配座ID: {conf_id}）")
+            st.success(f"1点エネルギー: {result['energy']} Hartree（配座ID: {conf_id}）")
 
             # 振動計算
             st.info(f"振動計算を実行中...（配座ID: {conf_id}）")
@@ -123,7 +131,7 @@ if st.button("全自動計算スタート"):
             # サマリー
             st.header(f"計算サマリー（配座ID: {conf_id}）")
             st.write(f"最適化構造:\n{final_geometry}")
-            st.write(f"1点エネルギー: {energy} Hartree")
+            st.write(f"1点エネルギー: {result['energy']} Hartree")
             st.write(f"振動数: {freq_array}")
 
     except Exception as e:

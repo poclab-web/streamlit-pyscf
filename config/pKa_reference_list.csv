@@ -1,0 +1,11 @@
+name,reference_smiles,reference_anion_smiles,pKa_exp,reference
+Acetic acid,CC(=O)O,CC(=O)[O-],4.76,Serjeant & Dempsey (1979)
+Formic acid,C(=O)O,C(=O)[O-],3.75,CRC Handbook
+Benzoic acid,c1ccccc1C(=O)O,c1ccccc1C(=O)[O-],4.2,Serjeant & Dempsey (1979)
+Trifluoroacetic acid,C(=O)(C(F)(F)F)O,C(=O)(C(F)(F)F)[O-],0.23,CRC Handbook
+Phenol,c1ccccc1O,c1ccccc1[O-],9.95,Serjeant & Dempsey (1979)
+Methanol,CO,C[O-],15.5,Literature average
+Water,O,[O-],15.7,Literature average
+Ethanol,CCO,CC[O-],15.9,Literature average
+Phenylacetic acid,O=C(O)Cc1ccccc1,O=C([O-])Cc1ccccc1,4.31,Serjeant & Dempsey (1979)
+p-Nitrobenzoic acid,O=C(O)c1ccc(cc1)[N+](=O)[O-],O=C([O-])c1ccc(cc1)[N+](=O)[O-],3.41,Serjeant & Dempsey (1979)

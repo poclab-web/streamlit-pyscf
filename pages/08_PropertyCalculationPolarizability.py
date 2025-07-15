@@ -4,6 +4,7 @@ TODO: 改修中
 """
 
 import streamlit as st
+from utils.module import load_css
 
 from rdkit import Chem
 from rdkit.Chem import AllChem, rdMolDescriptors
@@ -15,6 +16,10 @@ import os
 from logic.data_loader import list_chk_files, load_mo_info
 from logic.calculation import compute_electric_properties
 from logic.molecule_handler import MoleculeHandler
+
+# カスタムCSSを適用
+load_css("config/styles.css")
+
 
 st.title("PySCF compute_electric_properties")
 
@@ -73,8 +78,14 @@ if chk_file_path and st.button("計算実行"):
         if mol is None or mf is None:
             st.error("分子情報の読み込みに失敗しました。")
         else:
-            # 電気的性質の計算
-            results = compute_electric_properties(mol, basis_set=basis_set)
+            with st.spinner("電気的性質を計算中..."):
+                # PySCFのバージョン情報を表示
+                import pyscf
+                st.info(f"PySCF バージョン: {pyscf.__version__}")
+                
+                # 電気的性質の計算
+                results = compute_electric_properties(mol, basis_set=basis_set, density_g_cm3=density_g_cm3)
+                
             st.success("計算が完了しました！")
             st.write(f"🔷 SMILES: {results['smiles']}")
             st.write(f"✅ Dipole Moment: {results['dipole_moment']:.3f} Debye")
@@ -84,4 +95,31 @@ if chk_file_path and st.button("計算実行"):
         
     except Exception as e:
         st.error(f"計算中にエラーが発生しました: {e}")
+        
+        # デバッグ情報を表示
+        with st.expander("デバッグ情報"):
+            import traceback
+            st.code(traceback.format_exc())
+            
+            # PySCFのバージョンとモジュール情報
+            try:
+                import pyscf
+                st.write(f"PySCF バージョン: {pyscf.__version__}")
+                
+                # 利用可能なモジュールをチェック
+                modules_to_check = [
+                    "pyscf.prop.polarizability",
+                    "pyscf.hessian.rhf",
+                    "pyscf.prop"
+                ]
+                
+                for module_name in modules_to_check:
+                    try:
+                        __import__(module_name)
+                        st.write(f"✅ {module_name} は利用可能")
+                    except ImportError:
+                        st.write(f"❌ {module_name} は利用不可")
+                        
+            except Exception as debug_e:
+                st.write(f"デバッグ情報の取得中にエラー: {debug_e}")
 

@@ -4,6 +4,8 @@ NMRの予測
 """
 
 import streamlit as st
+from utils.module import load_css
+
 from pyscf import gto, scf, tools
 import py3Dmol
 from rdkit import Chem
@@ -22,6 +24,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import glob
+
+# カスタムCSSを適用
+load_css("config/styles.css")
 
 
 st.title("PySCF NMRシールドテンソル計算")

@@ -1,16 +1,19 @@
 streamlit
 watchdog
 matplotlib
-rdkit
+rdkit==2024.9.6
 pyscf
 geometric
 pyberny
 py3Dmol
-pyberny
 stmol
 ipython_genutils
 dftd3
+plotly
+pandas
+ase
+scipy
 
 # pyscf github
-git+https://github.com/pyscf/semiempirical
 git+https://github.com/pyscf/properties
+git+https://github.com/pyscf/qsdopt

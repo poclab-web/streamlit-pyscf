@@ -102,3 +102,15 @@ with st.expander("溶媒データを追加"):
             st.rerun()
         else:
             st.error("溶媒名と誘電率を正しく入力してください。")
+
+st.subheader("📂 pka list ")
+
+# pka listのCSVファイルのパス
+pka_csv_path = "config/pKa_reference_list.csv"
+
+# pka listのCSV読み込み
+if os.path.exists(pka_csv_path):
+    pka_df = pd.read_csv(pka_csv_path)
+    st.dataframe(pka_df)
+else:
+    st.warning(f"{pka_csv_path} が見つかりません。")    
