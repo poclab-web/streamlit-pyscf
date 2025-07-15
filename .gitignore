@@ -175,6 +175,9 @@ cython_debug/
 data
 .DS_Store
 
+# User configuration files (not managed by git)
+config/user_page_visibility.json
+
 # local calculation data
 .sdf
 .xyz
@@ -182,6 +185,9 @@ data
 .cube
 .molden
 _temp.cube
+
+# User configuration files (not managed by git)
+config/user_page_visibility.json
 
 # macOS
 DS_Store
