@@ -21,12 +21,18 @@ class UserPreferences:
                 with open(self.default_config_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
-                # 新しい構造化フォーマットの場合
-                if "categories" in data:
+                # 新しい構造化フォーマットの場合（各ページにvisibleとcategoryが含まれる）
+                if isinstance(next(iter(data.values()), None), dict):
                     flat_settings = {}
-                    for category_info in data["categories"].values():
-                        if "pages" in category_info:
-                            flat_settings.update(category_info["pages"])
+                    for page_name, page_info in data.items():
+                        # メタデータキーは除外
+                        if page_name.startswith('_'):
+                            continue
+                        if isinstance(page_info, dict) and "visible" in page_info:
+                            flat_settings[page_name] = page_info["visible"]
+                        else:
+                            # 後方互換性のため、dictだがvisibleキーがない場合はTrueとする
+                            flat_settings[page_name] = True
                     return flat_settings
                 
                 # 古いフラット形式の場合（後方互換性）
@@ -99,30 +105,66 @@ class UserPreferences:
             with open(self.default_config_file, 'w', encoding='utf-8') as f:
                 json.dump(default_settings, f, indent=2, ensure_ascii=False)
         
-        # デフォルト設定を読み込み
-        default_settings = self._load_default_config()
+        # 元のJSONデータを読み込み（構造を保持するため）
+        original_data = {}
+        if os.path.exists(self.default_config_file):
+            try:
+                with open(self.default_config_file, 'r', encoding='utf-8') as f:
+                    original_data = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError):
+                original_data = {}
         
-        # 新しいページファイルのデフォルト設定を追加
+        # フラット形式の設定を取得（比較用）
+        flat_settings = self._load_default_config()
+        
+        # 新しいページファイルや削除されたページファイルをチェック
         updated = False
-        for page_file in page_files:
-            if page_file not in default_settings:
-                default_settings[page_file] = True
-                updated = True
         
-        # 存在しないページファイルの設定を削除
-        files_to_remove = []
-        for page_file in default_settings.keys():
-            if page_file not in page_files:
-                files_to_remove.append(page_file)
-                updated = True
+        # 新しい構造化フォーマットの場合
+        if isinstance(next(iter(original_data.values()), None), dict):
+            # 新しいページファイルのデフォルト設定を追加
+            for page_file in page_files:
+                if page_file not in original_data:
+                    # 新しいページには基本計算カテゴリを割り当て
+                    original_data[page_file] = {
+                        "visible": True,
+                        "category": "基本計算"
+                    }
+                    updated = True
+            
+            # 存在しないページファイルの設定を削除
+            files_to_remove = []
+            for page_file in original_data.keys():
+                if not page_file.startswith('_') and page_file not in page_files:  # メタデータキーは除外
+                    files_to_remove.append(page_file)
+                    updated = True
+            
+            for page_file in files_to_remove:
+                del original_data[page_file]
         
-        for page_file in files_to_remove:
-            del default_settings[page_file]
+        # 古いフラット形式の場合
+        else:
+            # 新しいページファイルのデフォルト設定を追加
+            for page_file in page_files:
+                if page_file not in flat_settings:
+                    original_data[page_file] = True
+                    updated = True
+            
+            # 存在しないページファイルの設定を削除
+            files_to_remove = []
+            for page_file in flat_settings.keys():
+                if page_file not in page_files:
+                    files_to_remove.append(page_file)
+                    updated = True
+            
+            for page_file in files_to_remove:
+                if page_file in original_data:
+                    del original_data[page_file]
         
-        # デフォルト設定ファイルを更新
+        # デフォルト設定ファイルを更新（元の構造を保持）
         if updated:
             with open(self.default_config_file, 'w', encoding='utf-8') as f:
-                json.dump(default_settings, f, indent=2, ensure_ascii=False)
+                json.dump(original_data, f, indent=2, ensure_ascii=False)
         
         # ユーザー設定から存在しないページの設定を削除
         user_settings = self._load_user_config()
@@ -192,22 +234,49 @@ class UserPreferences:
             try:
                 with open(self.default_config_file, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    return data.get("metadata", {})
+                    return data.get("_metadata", {})
             except (json.JSONDecodeError, FileNotFoundError):
                 return {}
         return {}
     
-    def get_category_for_page(self, page_file: str) -> str:
+    def get_page_category(self, page_file: str) -> str:
         """ページファイルが属するカテゴリーを取得"""
-        categories = self.get_categories_info()
-        for category_key, category_info in categories.items():
-            if "pages" in category_info and page_file in category_info["pages"]:
-                return category_key
-        return "other"
+        if os.path.exists(self.default_config_file):
+            try:
+                with open(self.default_config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                # 新しい構造化フォーマットの場合
+                if isinstance(next(iter(data.values()), None), dict):
+                    if page_file in data and not page_file.startswith('_') and "category" in data[page_file]:
+                        return data[page_file]["category"]
+                    
+            except (json.JSONDecodeError, FileNotFoundError):
+                pass
+        return "その他"  # デフォルトカテゴリ
     
-    def get_pages_by_category(self, category_key: str) -> Dict[str, bool]:
-        """指定したカテゴリーのページ設定を取得"""
-        categories = self.get_categories_info()
-        if category_key in categories and "pages" in categories[category_key]:
-            return categories[category_key]["pages"]
-        return {}
+    def get_pages_by_category(self) -> Dict[str, List[str]]:
+        """カテゴリ別にページをグループ化して取得"""
+        category_pages = {}
+        
+        if os.path.exists(self.default_config_file):
+            try:
+                with open(self.default_config_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    
+                # 新しい構造化フォーマットの場合
+                if isinstance(next(iter(data.values()), None), dict):
+                    for page_file, page_info in data.items():
+                        # メタデータキーは除外
+                        if page_file.startswith('_'):
+                            continue
+                        if isinstance(page_info, dict) and "category" in page_info:
+                            category = page_info["category"]
+                            if category not in category_pages:
+                                category_pages[category] = []
+                            category_pages[category].append(page_file)
+                    
+            except (json.JSONDecodeError, FileNotFoundError):
+                pass
+        
+        return category_pages

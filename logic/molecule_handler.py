@@ -361,6 +361,61 @@ class MoleculeHandler:
             pyscf_atoms.append(f"{atom.GetSymbol()} {pos.x:.8f} {pos.y:.8f} {pos.z:.8f}")
         return "\n".join(pyscf_atoms)
 
+    def to_mopac_input(self, title=None, keywords="PM7 PRECISE"):
+        """
+        MOPACのinputファイル形式で分子データを出力する。
+        
+        Args:
+            title (str): 計算のタイトル（Noneの場合はInChIKeyを使用）
+            keywords (str): MOPACのキーワード行
+            
+        Returns:
+            str: MOPAC input形式の文字列
+        """
+        if not self.mol:
+            raise ValueError("Molecule is not initialized.")
+        
+        # タイトルが指定されていない場合はInChIKeyを使用
+        if title is None:
+            try:
+                title = Chem.MolToInchiKey(self.mol)
+            except:
+                title = "MOPAC calculation"
+        
+        conf = self.mol.GetConformer()
+        lines = []
+        
+        # ヘッダー（キーワードとタイトル）
+        lines.append(keywords)
+        lines.append("")
+        lines.append(title)
+        
+        # 原子座標部分
+        for atom in self.mol.GetAtoms():
+            pos = conf.GetAtomPosition(atom.GetIdx())
+            symbol = atom.GetSymbol()
+            coord_line = f"{symbol:<2} {pos.x:>10.5f} 1 {pos.y:>10.5f} 1 {pos.z:>10.5f} 1"
+            lines.append(coord_line)
+        
+        # 文字列を結合して返す
+        return "\n".join(lines)
+
+    def save_to_mopac(self, output_path="molecule.mop", title=None, keywords="PM7 PRECISE"):
+        """
+        MOPACのinputファイルとして保存する。
+        
+        Args:
+            output_path (str): 出力ファイルパス
+            title (str): 計算のタイトル（Noneの場合はInChIKeyを使用）
+            keywords (str): MOPACのキーワード行
+        """
+        if not self.mol:
+            raise ValueError("Molecule is not initialized.")
+        
+        mopac_input = self.to_mopac_input(title=title, keywords=keywords)
+        with open(output_path, "w") as f:
+            f.write(mopac_input)
+
     def get_fragments(self):
         """
         分子をフラグメントごとに分割してMolオブジェクトのリストで返す
@@ -486,7 +541,7 @@ class MoleculeHandler:
         # 垂直成分
         vertical_component = normal * math.cos(approach_rad)
         
-        # 水平成分（任意の方向）
+        # 水平方向の成分（任意の方向）
         # ベンゼン環の平面内での方向を決定
         tangent = np.array([1.0, 0.0, 0.0])
         if abs(np.dot(normal, tangent)) > 0.9:
