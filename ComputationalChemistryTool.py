@@ -96,51 +96,64 @@ def home_page():
     current_settings = user_prefs.load_page_visibility()
     visible_pages = [f for f in page_files if current_settings.get(f, True)]
     
-    categories = {
-        "🧪 基本計算": {
-            "keywords": ['general', 'optimization', 'structure', 'singlepoint', 'conformational', 'opt'],
-            "description": "分子構造最適化、一点エネルギー計算、配座解析"
-        },
-        "� 可視化と解析": {
-            "keywords": ['visualization', 'energy', 'decomposition', 'fragment', 'analysis'],
-            "description": "分子軌道可視化、エネルギー分解解析、フラグメント解析"
-        },
-        "⚡ 物性計算": {
-            "keywords": ['ionization', 'solvation', 'bond', 'pka', 'property'],
-            "description": "イオン化ポテンシャル、溶媒効果、結合解離エネルギー、pKa計算"
-        },
-        "📊 スペクトル計算": {
-            "keywords": ['spectrum', 'ir', 'nmr', 'uv', 'polarizability'],
-            "description": "IR、NMR、UV-Visスペクトル予測、分極率計算"
-        },
-        "🔄 遷移状態計算": {
-            "keywords": ['transition', 'neb', 'ts', 'irc', 'reaction'],
-            "description": "遷移状態探索、反応経路計算、IRC解析"
-        },
-        "⚙️ システム・設定": {
-            "keywords": ['settings', 'database', 'summarization', 'system'],
-            "description": "設定管理、データベース、結果集計"
-        }
+    # JSONからカテゴリ別ページ情報を取得
+    pages_by_category = user_prefs.get_pages_by_category()
+    
+    # カテゴリ説明を定義
+    category_descriptions = {
+        "基本計算": "分子構造最適化、一点エネルギー計算、配座解析",
+        "可視化と解析": "分子軌道可視化、エネルギー分解解析、フラグメント解析",
+        "物性計算": "イオン化ポテンシャル、溶媒効果、結合解離エネルギー、pKa計算",
+        "スペクトル計算": "IR、NMR、UV-Visスペクトル予測、分極率計算",
+        "遷移状態計算": "遷移状態探索、反応経路計算、IRC解析",
+        "半経験的": "半経験的手法による高速計算、PM6/PM7、AM1、MNDO、DFTB",
+        "システム・設定": "設定管理、データベース、結果集計"
     }
     
-    for category, info in categories.items():
-        category_files = [f for f in page_files if any(keyword in f.lower() for keyword in info['keywords'])]
-        visible_in_category = [f for f in category_files if f in visible_pages]
-        
-        with st.expander(f"{category} ({len(visible_in_category)}/{len(category_files)} ページ表示中)", expanded=False):
-            st.markdown(f"**説明**: {info['description']}")
+    # カテゴリアイコンを定義
+    category_icons = {
+        "基本計算": "🧪",
+        "可視化と解析": "🔍",
+        "物性計算": "⚡",
+        "スペクトル計算": "📊",
+        "遷移状態計算": "🔄",
+        "半経験的": "🧬",
+        "システム・設定": "⚙️"
+    }
+    
+    # カテゴリの表示順序を定義
+    category_order = [
+        "基本計算",
+        "可視化と解析", 
+        "物性計算",
+        "スペクトル計算",
+        "遷移状態計算",
+        "半経験的",
+        "システム・設定"
+    ]
+    
+    for category in category_order:
+        if category in pages_by_category:
+            category_files = pages_by_category[category]
+            visible_in_category = [f for f in category_files if f in visible_pages]
             
-            if visible_in_category:
-                st.markdown("**利用可能なページ:**")
-                for page_file in sorted(visible_in_category):
-                    clean_name = clean_module_name(page_file)
-                    st.markdown(f"• {clean_name}")
-            else:
-                st.info("このカテゴリで表示中のページはありません。")
+            category_icon = category_icons.get(category, "📂")
+            description = category_descriptions.get(category, "説明なし")
             
-            if len(category_files) > len(visible_in_category):
-                hidden_count = len(category_files) - len(visible_in_category)
-                st.markdown(f"💡 {hidden_count}個のページが非表示になっています。設定ページで表示/非表示を変更できます。")
+            with st.expander(f"{category_icon} {category} ({len(visible_in_category)}/{len(category_files)} ページ表示中)", expanded=False):
+                st.markdown(f"**説明**: {description}")
+                
+                if visible_in_category:
+                    st.markdown("**利用可能なページ:**")
+                    for page_file in sorted(visible_in_category):
+                        clean_name = clean_module_name(page_file)
+                        st.markdown(f"• {clean_name}")
+                else:
+                    st.info("このカテゴリで表示中のページはありません。")
+                
+                if len(category_files) > len(visible_in_category):
+                    hidden_count = len(category_files) - len(visible_in_category)
+                    st.markdown(f"💡 {hidden_count}個のページが非表示になっています。設定ページで表示/非表示を変更できます。")
     
     st.markdown("---")
     
@@ -228,12 +241,15 @@ def get_dynamic_pages():
     config_settings = user_prefs.load_page_visibility()
     
     # カテゴリ別にページを分類
-    calculation_pages = []
-    visualization_pages = []
-    property_pages = []
-    spectrum_pages = []
-    transition_pages = []
-    system_pages = []
+    category_pages = {
+        "基本計算": [],
+        "可視化と解析": [],
+        "物性計算": [],
+        "スペクトル計算": [],
+        "遷移状態計算": [],
+        "半経験的": [],
+        "システム・設定": []
+    }
     
     for file_name in sorted(page_files):
         if not config_settings.get(file_name, True):
@@ -246,85 +262,53 @@ def get_dynamic_pages():
         file_path = os.path.join(pages_directory, file_name)
         clean_name = clean_module_name(file_name)
         
-        # アイコンとカテゴリを決定
-        if file_name == "13_ConformationalEnergyDecomposition.py":
-            # 特別な処理：ConformationalEnergyDecompositionは可視化と解析に分類
-            icon = ":material/analytics:"
-            page = st.Page(
-                create_page_from_file(file_path, file_name),
-                title=clean_name,
-                icon=icon,
-                url_path=f"vis_{file_name[:-3]}"
-            )
-            visualization_pages.append(page)
-        elif any(keyword in file_name.lower() for keyword in ['general', 'optimization', 'structure', 'singlepoint', 'opt']) or (file_name.lower().startswith('05_conformational') and 'energy' not in file_name.lower()):
+        # JSONファイルからカテゴリを取得
+        category = user_prefs.get_page_category(file_name)
+        
+        # アイコンを決定
+        icon = ":material/settings:"  # デフォルト
+        url_prefix = "sys"  # デフォルト
+        
+        if category == "基本計算":
             icon = ":material/science:"
-            page = st.Page(
-                create_page_from_file(file_path, file_name),
-                title=clean_name,
-                icon=icon,
-                url_path=f"calc_{file_name[:-3]}"
-            )
-            calculation_pages.append(page)
-        elif any(keyword in file_name.lower() for keyword in ['ionization', 'solvation', 'bond', 'pka']) and 'property' not in file_name.lower():
-            icon = ":material/bolt:"
-            page = st.Page(
-                create_page_from_file(file_path, file_name),
-                title=clean_name,
-                icon=icon,
-                url_path=f"prop_{file_name[:-3]}"
-            )
-            property_pages.append(page)
-        elif any(keyword in file_name.lower() for keyword in ['visualization', 'energydecomposition', 'fragment']):
+            url_prefix = "calc"
+        elif category == "可視化と解析":
             icon = ":material/analytics:"
-            page = st.Page(
-                create_page_from_file(file_path, file_name),
-                title=clean_name,
-                icon=icon,
-                url_path=f"vis_{file_name[:-3]}"
-            )
-            visualization_pages.append(page)
-        elif any(keyword in file_name.lower() for keyword in ['neb', 'ts', 'irc', 'transition']):
-            icon = ":material/timeline:"
-            page = st.Page(
-                create_page_from_file(file_path, file_name),
-                title=clean_name,
-                icon=icon,
-                url_path=f"trans_{file_name[:-3]}"
-            )
-            transition_pages.append(page)
-        elif any(keyword in file_name.lower() for keyword in ['propertycalculationir', 'propertycalculationnmr', 'uv_spectrum', 'polarizability', 'spectrum']) or file_name.startswith('08_PropertyCalculation'):
+            url_prefix = "vis"
+        elif category == "物性計算":
+            icon = ":material/bolt:"
+            url_prefix = "prop"
+        elif category == "スペクトル計算":
             icon = ":material/graphic_eq:"
-            page = st.Page(
-                create_page_from_file(file_path, file_name),
-                title=clean_name,
-                icon=icon,
-                url_path=f"spec_{file_name[:-3]}"
-            )
-            spectrum_pages.append(page)
-        else:
+            url_prefix = "spec"
+        elif category == "遷移状態計算":
+            icon = ":material/timeline:"
+            url_prefix = "trans"
+        elif category == "半経験的":
+            icon = ":material/biotech:"
+            url_prefix = "semi"
+        elif category == "システム・設定":
             icon = ":material/settings:"
-            page = st.Page(
-                create_page_from_file(file_path, file_name),
-                title=clean_name,
-                icon=icon,
-                url_path=f"sys_{file_name[:-3]}"
-            )
-            system_pages.append(page)
+            url_prefix = "sys"
+        
+        page = st.Page(
+            create_page_from_file(file_path, file_name),
+            title=clean_name,
+            icon=icon,
+            url_path=f"{url_prefix}_{file_name[:-3]}"
+        )
+        
+        # カテゴリが存在する場合は追加
+        if category in category_pages:
+            category_pages[category].append(page)
+        else:
+            # 未知のカテゴリの場合はシステム・設定に追加
+            category_pages["システム・設定"].append(page)
     
-    # カテゴリ別にページ辞書を構築
-    if calculation_pages:
-        page_dict["基本計算"] = calculation_pages
-    if visualization_pages:
-        page_dict["可視化と解析"] = visualization_pages
-    if property_pages:
-        page_dict["物性計算"] = property_pages
-    if spectrum_pages:
-        page_dict["スペクトル計算"] = spectrum_pages
-    if transition_pages:
-        page_dict["遷移状態計算"] = transition_pages
-    if system_pages:
-        page_dict["システム・設定"] = system_pages
+    # カテゴリ別にページ辞書を構築（空でないカテゴリのみ）
+    for category, pages in category_pages.items():
+        if pages:
+            page_dict[category] = pages
     
     return page_dict
 
@@ -368,46 +352,66 @@ def settings_page():
         
         with st.form("page_visibility_form"):
             new_settings = {}
+            
+            # JSONからカテゴリ別ページ情報を取得
+            pages_by_category = user_prefs.get_pages_by_category()
+            
+            # カテゴリの表示順序を定義
+            category_order = [
+                "基本計算",
+                "可視化と解析", 
+                "物性計算",
+                "スペクトル計算",
+                "遷移状態計算",
+                "半経験的",
+                "システム・設定"
+            ]
+            
             processed_files = set()  # 処理済みファイルを追跡
             
-            # カテゴリ別に分けて表示
-            categories = {
-                "🧪 基本計算": ['general', 'optimization', 'structure', 'singlepoint', 'conformational', 'opt'],
-                "� 可視化と解析": ['visualization', 'energy', 'decomposition', 'fragment', 'analysis'],
-                "⚡ 物性計算": ['ionization', 'solvation', 'bond', 'pka'],
-                "📊 スペクトル計算": ['spectrum', 'ir', 'nmr', 'uv', 'polarizability'],
-                "🔄 遷移状態計算": ['transition', 'neb', 'ts', 'irc', 'reaction'],
-                "⚙️ システム・設定": ['settings', 'database', 'summarization', 'system']
-            }
+            # 順序に従ってカテゴリを表示
+            for category in category_order:
+                if category in pages_by_category:
+                    category_files = pages_by_category[category]
+                    
+                    # カテゴリアイコンを決定
+                    category_icon = "📂"
+                    if category == "基本計算":
+                        category_icon = "🧪"
+                    elif category == "可視化と解析":
+                        category_icon = "🔍"
+                    elif category == "物性計算":
+                        category_icon = "⚡"
+                    elif category == "スペクトル計算":
+                        category_icon = "📊"
+                    elif category == "遷移状態計算":
+                        category_icon = "🔄"
+                    elif category == "半経験的":
+                        category_icon = "🧬"
+                    elif category == "システム・設定":
+                        category_icon = "⚙️"
+                    
+                    st.markdown(f"#### {category_icon} {category}")
+                    
+                    if category_files:
+                        cols = st.columns(min(3, len(category_files)))
+                        for i, page_file in enumerate(sorted(category_files)):
+                            clean_name = clean_module_name(page_file)
+                            current_value = current_settings.get(page_file, True)
+                            with cols[i % len(cols)]:
+                                new_settings[page_file] = st.checkbox(
+                                    clean_name,
+                                    value=current_value,
+                                    key=f"setting_{category}_{i}_{page_file}",
+                                    help=f"ファイル: {page_file}"
+                                )
+                            processed_files.add(page_file)
+                    else:
+                        st.info(f"このカテゴリにはページがありません。")
+                    
+                    st.markdown("")
             
-            for category, keywords in categories.items():
-                st.markdown(f"#### {category}")
-                category_files = []
-                for page_file in sorted(page_files):
-                    if page_file in processed_files:
-                        continue  # 既に処理済みのファイルはスキップ
-                    if any(keyword in page_file.lower() for keyword in keywords):
-                        category_files.append(page_file)
-                        processed_files.add(page_file)  # 処理済みとしてマーク
-                
-                if category_files:
-                    cols = st.columns(min(3, len(category_files)))
-                    for i, page_file in enumerate(category_files):
-                        clean_name = clean_module_name(page_file)
-                        current_value = current_settings.get(page_file, True)
-                        with cols[i % len(cols)]:
-                            new_settings[page_file] = st.checkbox(
-                                clean_name,
-                                value=current_value,
-                                key=f"setting_{category}_{i}_{page_file}",  # カテゴリとインデックスを含む
-                                help=f"ファイル: {page_file}"
-                            )
-                else:
-                    st.info(f"このカテゴリにはページがありません。")
-                
-                st.markdown("")
-            
-            # その他のファイル
+            # カテゴリに属していないその他のファイル
             other_files = []
             for page_file in sorted(page_files):
                 if page_file not in processed_files:
@@ -423,7 +427,7 @@ def settings_page():
                         new_settings[page_file] = st.checkbox(
                             clean_name,
                             value=current_value,
-                            key=f"setting_other_{i}_{page_file}",  # その他カテゴリ用のキー
+                            key=f"setting_other_{i}_{page_file}",
                             help=f"ファイル: {page_file}"
                         )
             
@@ -492,45 +496,68 @@ def settings_page():
     with tab3:
         st.markdown("### 📊 現在の設定詳細")
         
-        # カテゴリ別の設定状況
-        categories = {
-            "🧪 基本計算": ['general', 'optimization', 'structure', 'singlepoint', 'conformational', 'opt'],
-            "� 可視化と解析": ['visualization', 'energy', 'decomposition', 'fragment', 'analysis'],
-            "⚡ 物性計算": ['ionization', 'solvation', 'bond', 'pka'],
-            "📊 スペクトル計算": ['spectrum', 'ir', 'nmr', 'uv', 'polarizability'],
-            "🔄 遷移状態計算": ['transition', 'neb', 'ts', 'irc', 'reaction'],
-            "⚙️ システム・設定": ['settings', 'database', 'summarization', 'system']
-        }
+        # JSONからカテゴリ別ページ情報を取得
+        pages_by_category = user_prefs.get_pages_by_category()
         
-        for category, keywords in categories.items():
-            st.markdown(f"#### {category}")
-            category_files = [f for f in page_files if any(keyword in f.lower() for keyword in keywords)]
-            
-            if category_files:
-                visible_in_category = [f for f in category_files if current_settings.get(f, True)]
-                hidden_in_category = [f for f in category_files if not current_settings.get(f, True)]
+        # カテゴリの表示順序を定義
+        category_order = [
+            "基本計算",
+            "可視化と解析", 
+            "物性計算",
+            "スペクトル計算",
+            "遷移状態計算",
+            "半経験的",
+            "システム・設定"
+        ]
+        
+        for category in category_order:
+            if category in pages_by_category:
+                category_files = pages_by_category[category]
                 
-                col1, col2 = st.columns(2)
+                # カテゴリアイコンを決定
+                category_icon = "📂"
+                if category == "基本計算":
+                    category_icon = "🧪"
+                elif category == "可視化と解析":
+                    category_icon = "🔍"
+                elif category == "物性計算":
+                    category_icon = "⚡"
+                elif category == "スペクトル計算":
+                    category_icon = "📊"
+                elif category == "遷移状態計算":
+                    category_icon = "🔄"
+                elif category == "半経験的":
+                    category_icon = "🧬"
+                elif category == "システム・設定":
+                    category_icon = "⚙️"
                 
-                with col1:
-                    st.markdown("**✅ 表示中:**")
-                    if visible_in_category:
-                        for f in visible_in_category:
-                            st.write(f"• {clean_module_name(f)}")
-                    else:
-                        st.info("表示中のページはありません")
+                st.markdown(f"#### {category_icon} {category}")
                 
-                with col2:
-                    st.markdown("**❌ 非表示:**")
-                    if hidden_in_category:
-                        for f in hidden_in_category:
-                            st.write(f"• {clean_module_name(f)}")
-                    else:
-                        st.info("非表示のページはありません")
-            else:
-                st.info("このカテゴリにはページがありません。")
-            
-            st.markdown("")
+                if category_files:
+                    visible_in_category = [f for f in category_files if current_settings.get(f, True)]
+                    hidden_in_category = [f for f in category_files if not current_settings.get(f, True)]
+                    
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.markdown("**✅ 表示中:**")
+                        if visible_in_category:
+                            for f in visible_in_category:
+                                st.write(f"• {clean_module_name(f)}")
+                        else:
+                            st.info("表示中のページはありません")
+                    
+                    with col2:
+                        st.markdown("**❌ 非表示:**")
+                        if hidden_in_category:
+                            for f in hidden_in_category:
+                                st.write(f"• {clean_module_name(f)}")
+                        else:
+                            st.info("非表示のページはありません")
+                else:
+                    st.info("このカテゴリにはページがありません。")
+                
+                st.markdown("")
         
         # 設定ファイル情報
         st.markdown("---")
