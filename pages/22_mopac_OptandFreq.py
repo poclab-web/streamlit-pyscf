@@ -20,8 +20,9 @@ import stmol
 from rdkit import Chem
 
 from utils.module import load_css
+from utils.mopac_ui import require_mopac
 from logic.molecule_handler import MoleculeHandler
-from logic.mopac_calculation import MopacCalculator, theory_options, check_mopac_installation
+from logic.mopac_calculation import MopacCalculator, theory_options
 
 
 def _get_vibration_assignment(frequency):
@@ -186,24 +187,8 @@ load_css("config/styles.css")
 # 本文
 st.title("MOPAC Geometry Optimization + Frequency Analysis")
 
-# MOPACインストール状況の表示
-st.subheader("MOPAC Installation Status")
-mopac_status = check_mopac_installation()
-
-if mopac_status["installed"]:
-    st.success(f"✅ MOPAC is installed at: `{mopac_status['path']}`")
-        
-    # エラーがある場合は警告として表示
-    if mopac_status["error"]:
-        st.warning(f"Note: {mopac_status['error']}")
-else:
-    st.error("❌ MOPAC is not installed or not found in PATH")
-    st.write(f"Error: {mopac_status['error']}")
-    st.markdown("""
-    **MOPACをインストールするには:**
-    1. [MOPAC公式サイト](http://openmopac.net/)からダウンロード
-    2. `mopac`コマンドがターミナルで実行できることを確認
-    """)
+# MOPACインストール状況の確認
+require_mopac()
 
 # ユーザー入力
 st.header("Molecular Input")

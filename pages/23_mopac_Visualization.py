@@ -16,7 +16,7 @@ import tempfile
 import stmol
 
 from utils.module import load_css
-from logic.mopac_calculation import check_mopac_installation
+from utils.mopac_ui import require_mopac
 from logic.mopac_visualization import (
     list_out_files,
     display_file_info,
@@ -34,12 +34,7 @@ st.title("MOPAC分子軌道可視化")
 st.markdown("MOPACのoutファイルから分子軌道情報を読み取り、可視化します。")
 
 # MOPACインストール確認
-mopac_status = check_mopac_installation()
-if not mopac_status['installed']:
-    st.warning("MOPACがインストールされていないか、PATHに設定されていません。")
-    st.info("MOPACのインストール状況を確認してください。")
-else:
-    st.success(f"MOPAC検出: {mopac_status['path']}")
+require_mopac()
 
 st.divider()
 

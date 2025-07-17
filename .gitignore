@@ -4,6 +4,9 @@ __pycache__/
 *$py.class
 pyscf
 
+# MOPAC configuration (user-specific paths)
+config/mopac_paths.json
+
 # C extensions
 *.so
 
