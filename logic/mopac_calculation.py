@@ -7,6 +7,16 @@ from pathlib import Path
 import re
 from rdkit import Chem
 
+# MOPAC設定管理をインポート
+try:
+    from config.external_software_config import get_mopac_executable, validate_mopac_path
+except ImportError:
+    # フォールバック用の簡単な実装
+    def get_mopac_executable():
+        return {'path': None, 'source': 'not_found', 'error': 'Config module not available'}
+    def validate_mopac_path(path):
+        return {'valid': False, 'error': 'Config module not available', 'absolute_path': ''}
+
 # MOPACで選べる計算理論
 theory_options = [
     "PM7",     # 最新の半経験的法。高精度で汎用的。
@@ -48,30 +58,17 @@ def check_mopac_installation():
             - installed (bool): インストールされているかどうか
             - path (str): 実行ファイルのパス（見つからない場合はNone）
             - error (str): エラーメッセージ（エラーがない場合は空文字列）
+            - source (str): パスの取得元（'config', 'path', 'not_found'）
     """
+    # 新しい設定システムを使用
+    mopac_info = get_mopac_executable()
+    
     result = {
-        'installed': False,
-        'path': None,
-        'error': ''
+        'installed': mopac_info['path'] is not None,
+        'path': mopac_info['path'],
+        'error': mopac_info['error'],
+        'source': mopac_info['source']
     }
-    
-    # 可能なMOPAC実行ファイル名
-    possible_names = ['mopac', 'MOPAC2016.exe', 'MOPAC2023.exe', 'MOPAC']
-    
-    # 実行ファイルを探す
-    mopac_path = None
-    for name in possible_names:
-        path = shutil.which(name)
-        if path:
-            mopac_path = path
-            break
-    
-    if not mopac_path:
-        result['error'] = 'MOPAC executable not found in PATH'
-        return result
-    
-    result['path'] = mopac_path
-    result['installed'] = True
     
     return result
 
@@ -79,15 +76,27 @@ def check_mopac_installation():
 class MopacCalculator:
     """
     MoleculeHandlerから受け取った分子データを使ってMOPAC計算を実行するクラス
+    
+    使用例:
+        # 標準的な使用（PATHからMOPACを自動検索）
+        calculator = MopacCalculator(molecule_handler)
+        
+        # フルパス指定での使用
+        mopac_path = "/home/username/tools/mopac2023/bin/MOPAC"
+        calculator = MopacCalculator(molecule_handler, mopac_path=mopac_path)
+        
+        # 計算実行
+        result = calculator.optimize_geometry()
     """
     
-    def __init__(self, molecule_handler, work_dir=None):
+    def __init__(self, molecule_handler, work_dir=None, mopac_path=None):
         """
         初期化
         
         Args:
             molecule_handler: MoleculeHandlerのインスタンス
             work_dir: 作業ディレクトリ（指定しない場合はInChIKeyベースのディレクトリを作成）
+            mopac_path: MOPACバイナリのフルパス（指定しない場合はPATHから自動検索）
         """
         self.molecule_handler = molecule_handler
         
@@ -100,9 +109,15 @@ class MopacCalculator:
         self.work_dir.mkdir(parents=True, exist_ok=True)
         
         # MOPACの実行可能ファイルのパスを確認
-        self.mopac_executable = self._find_mopac_executable()
+        if mopac_path:
+            # フルパスが指定された場合
+            self.mopac_executable = self._validate_mopac_path(mopac_path)
+        else:
+            # PATHから自動検索
+            self.mopac_executable = self._find_mopac_executable()
+            
         if not self.mopac_executable:
-            raise RuntimeError("MOPAC executable not found. Please install MOPAC.")
+            raise RuntimeError("MOPAC executable not found. Please install MOPAC or specify the full path.")
     
     def _get_inchikey_from_molecule(self):
         """
@@ -155,10 +170,26 @@ class MopacCalculator:
     
     def _find_mopac_executable(self):
         """MOPACの実行可能ファイルを探す"""
-        mopac_status = check_mopac_installation()
-        if mopac_status['installed']:
-            return os.path.basename(mopac_status['path'])
-        return None
+        mopac_info = get_mopac_executable()
+        return mopac_info['path']  # フルパスを返す
+    
+    def _validate_mopac_path(self, mopac_path):
+        """
+        指定されたMOPACバイナリのパスを検証する
+        
+        Args:
+            mopac_path: 検証するMOPACバイナリのパス
+            
+        Returns:
+            str: 検証済みのフルパス（無効な場合はNone）
+        """
+        validation = validate_mopac_path(mopac_path)
+        if validation['valid']:
+            print(f"Using MOPAC binary at: {validation['absolute_path']}")
+            return validation['absolute_path']
+        else:
+            print(f"Warning: {validation['error']}")
+            return None
     
     def create_input_file(self, 
                          theory="PM7", 
@@ -723,7 +754,7 @@ class MopacCalculator:
                     # 最適化された構造で分子軌道計算を実行
                     from logic.molecule_handler import MoleculeHandler
                     opt_handler = MoleculeHandler(optimized_mol, input_type="rdkit")
-                    opt_calculator = MopacCalculator(opt_handler, work_dir=str(self.work_dir))
+                    opt_calculator = MopacCalculator(opt_handler, work_dir=str(self.work_dir), mopac_path=self.mopac_executable)
                     
                     mo_result = opt_calculator.molecular_orbital_calculation(
                         theory=theory,
@@ -1157,7 +1188,7 @@ class MopacCalculator:
                 conf_work_dir.mkdir(parents=True, exist_ok=True)
                 
                 # 配座専用のMopacCalculatorを作成
-                conf_calculator = MopacCalculator(temp_handler, work_dir=str(conf_work_dir))
+                conf_calculator = MopacCalculator(temp_handler, work_dir=str(conf_work_dir), mopac_path=self.mopac_executable)
                 
                 # 最適化を実行
                 print(f"Running MOPAC optimization for conformer {conf_id}...")
@@ -1205,7 +1236,7 @@ class MopacCalculator:
                                 if optimized_mol:
                                     # 最適化された構造で分子軌道計算
                                     opt_handler = MoleculeHandler(optimized_mol, input_type="rdkit")
-                                    mo_calculator = MopacCalculator(opt_handler, work_dir=str(conf_work_dir))
+                                    mo_calculator = MopacCalculator(opt_handler, work_dir=str(conf_work_dir), mopac_path=self.mopac_executable)
                                     
                                     mo_result = mo_calculator.molecular_orbital_calculation(
                                         theory=theory,
@@ -1308,7 +1339,8 @@ def run_mopac_calculation(molecule_handler,
                          charge=0,
                          multiplicity=1,
                          work_dir=None,
-                         include_mo=False):
+                         include_mo=False,
+                         mopac_path=None):
     """
     MoleculeHandlerを使ってMOPAC計算を実行する便利関数
     
@@ -1320,11 +1352,18 @@ def run_mopac_calculation(molecule_handler,
         multiplicity: スピン多重度
         work_dir: 作業ディレクトリ
         include_mo: 分子軌道計算を含めるか（optimize時のみ有効）
+        mopac_path: MOPACバイナリのフルパス（指定しない場合は設定ファイルまたはPATHから自動検索）
         
     Returns:
         dict: 計算結果
     """
-    calculator = MopacCalculator(molecule_handler, work_dir=work_dir)
+    # mopac_pathが指定されていない場合は設定ファイルから自動取得
+    if mopac_path is None:
+        mopac_info = get_mopac_executable()
+        if mopac_info['path']:
+            mopac_path = mopac_info['path']
+    
+    calculator = MopacCalculator(molecule_handler, work_dir=work_dir, mopac_path=mopac_path)
     
     try:
         if calculation_type == "optimize":

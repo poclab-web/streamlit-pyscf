@@ -30,6 +30,8 @@ load_css("config/styles.css")
 # 本文
 st.title("Transition State Search")
 
+st.warning("精度は改善余地あります。検討中です")
+
 st.markdown("""
 ### 遷移状態探索について
 遷移状態は化学反応において反応物から生成物へと変化する過程での最高エネルギー点です。
