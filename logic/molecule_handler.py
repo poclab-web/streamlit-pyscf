@@ -416,6 +416,43 @@ class MoleculeHandler:
         with open(output_path, "w") as f:
             f.write(mopac_input)
 
+    def get_total_charge(self):
+        """
+        分子の総電荷を計算する。
+        
+        Returns:
+            int: 分子の総電荷
+        """
+        if not self.mol:
+            raise ValueError("Molecule is not initialized.")
+        
+        total_charge = 0
+        for atom in self.mol.GetAtoms():
+            total_charge += atom.GetFormalCharge()
+        
+        return total_charge
+
+    def get_multiplicity(self):
+        """
+        分子のスピン多重度を計算する。
+        
+        Returns:
+            int: スピン多重度 (2S + 1)
+        """
+        if not self.mol:
+            raise ValueError("Molecule is not initialized.")
+        
+        # 不対電子の数を計算
+        unpaired_electrons = 0
+        for atom in self.mol.GetAtoms():
+            unpaired_electrons += atom.GetNumRadicalElectrons()
+        
+        # スピン多重度 = 2S + 1 (Sは総スピン)
+        # 不対電子の数 = 2S なので、多重度 = 不対電子数 + 1
+        multiplicity = unpaired_electrons + 1
+        
+        return multiplicity
+
     def get_fragments(self):
         """
         分子をフラグメントごとに分割してMolオブジェクトのリストで返す

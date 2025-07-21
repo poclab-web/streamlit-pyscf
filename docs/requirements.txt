@@ -1,0 +1,12 @@
+# ===== Documentation Generation Tools =====
+# Sphinx-based documentation
+sphinx>=4.0                 # Python documentation generator
+sphinx-rtd-theme            # Read the Docs theme for Sphinx
+myst-parser                 # Markdown parser for Sphinx
+sphinx-autodoc-typehints    # Type hints support for autodoc
+sphinx-copybutton           # Copy button for code blocks
+sphinx-autobuild            # Auto-rebuild documentation on changes
+
+# MkDocs-based documentation
+mkdocs                      # Static site generator for documentation
+mkdocs-material             # Material Design theme for MkDocs

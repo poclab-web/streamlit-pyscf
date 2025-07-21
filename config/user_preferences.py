@@ -280,3 +280,18 @@ class UserPreferences:
                 pass
         
         return category_pages
+    
+    def get_category_order(self) -> List[str]:
+        """カテゴリの表示順序を取得"""
+        metadata = self.get_metadata()
+        return metadata.get("categoryOrder", [])
+    
+    def get_category_descriptions(self) -> Dict[str, str]:
+        """カテゴリの説明を取得"""
+        metadata = self.get_metadata()
+        return metadata.get("categoryDescriptions", {})
+    
+    def get_category_icons(self) -> Dict[str, str]:
+        """カテゴリのアイコンを取得"""
+        metadata = self.get_metadata()
+        return metadata.get("categoryIcons", {})

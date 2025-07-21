@@ -1,0 +1,38 @@
+site_name: Streamlit-PySCF
+site_url: https://poclab-web.github.io/streamlit-pyscf/
+repo_url: https://github.com/poclab-web/streamlit-pyscf
+repo_name: poclab-web/streamlit-pyscf
+
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.instant
+    - search.suggest
+    - content.code.copy
+
+nav:
+  - ホーム: index.md
+  - セットアップ:
+      - インストール: installation.md
+      - 使い方: usage.md
+  - 機能ガイド:
+      - バッチ計算: batch_calculation.md
+      - 構造チェック: structure_validation.md
+      - 単一構造計算: single_point.md
+      - 構造最適化: optimization.md
+      - 配座探索: conformational_search.md
+      - 振動解析: frequency.md
+      - 可視化: visualization.md
+      - 物性計算: property_calculation.md
+      - イオン化ポテンシャル: ionization_potential.md
+      - 結合解離エネルギー: bde.md
+      - エネルギー分解解析: eda.md
+      - pKa計算: pka.md
+      - 遷移状態探索: ts_search.md
+      - UVスペクトル予測: uv_spectrum.md
+      - NMR予測: nmr.md
+  - 開発ガイド:
+      - コード構成: development.md
+      - 貢献方法: contributing.md
+  - ライセンス: license.md

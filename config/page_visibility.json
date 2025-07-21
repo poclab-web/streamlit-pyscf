@@ -2,136 +2,195 @@
   "_metadata": {
     "description": "Streamlit PySCF アプリケーションのページ表示設定ファイル",
     "purpose": "各ページの表示/非表示とカテゴリ分類を管理",
-    "version": "2.0",
-    "lastModified": "2025-07-16",
+    "version": "3.0",
+    "lastModified": "2025-07-21",
+    "numberingSystem": {
+      "000-099": "前処理・ユーティリティ",
+      "100-199": "統合・ワークフロー",
+      "200-299": "分子力場",
+      "300-399": "半経験的",
+      "400-499": "量子化学計算",
+      "500-599": "可視化と解析",
+      "600-699": "物性計算",
+      "700-799": "スペクトル計算",
+      "800-899": "遷移状態計算",
+      "900-999": "システム・設定"
+    },
     "schema": {
       "visible": "boolean - ページの表示/非表示を制御",
       "category": "string - ページのカテゴリ分類"
     },
     "availableCategories": [
-      "基本計算",
-      "可視化と解析", 
+      "前処理・ユーティリティ",
+      "統合・ワークフロー",
+      "分子力場",
+      "半経験的",
+      "量子化学計算",
+      "可視化と解析",
       "物性計算",
       "スペクトル計算",
       "遷移状態計算",
-      "システム・設定",
-      "半経験的"
-    ]
+      "システム・設定"
+    ],
+    "categoryOrder": [
+      "前処理・ユーティリティ",
+      "統合・ワークフロー",
+      "分子力場",
+      "半経験的",
+      "量子化学計算",
+      "可視化と解析",
+      "物性計算",
+      "スペクトル計算",
+      "遷移状態計算",
+      "システム・設定"
+    ],
+    "categoryDescriptions": {
+      "前処理・ユーティリティ": "分子構造の確認・変換、入力ファイル形式チェック、フォーマット変換",
+      "統合・ワークフロー": "複数プログラムの統合実行、自動化ワークフロー、総合計算",
+      "分子力場": "分子力場を用いた分子動力学計算、OpenMM、AMBER、CHARMM",
+      "半経験的": "半経験的手法による高速計算、PM6/PM7、AM1、MNDO、DFTB、xTB",
+      "量子化学計算": "分子構造最適化、一点エネルギー計算、配座解析",
+      "可視化と解析": "分子軌道可視化、エネルギー分解解析、フラグメント解析",
+      "物性計算": "イオン化ポテンシャル、溶媒効果、結合解離エネルギー、pKa計算",
+      "スペクトル計算": "IR、NMR、UV-Visスペクトル予測、分極率計算",
+      "遷移状態計算": "遷移状態探索、反応経路計算、IRC解析",
+      "システム・設定": "設定管理、データベース、結果集計"
+    },
+    "categoryIcons": {
+      "前処理・ユーティリティ": "🔧",
+      "統合・ワークフロー": "🔀",
+      "分子力場": "🧲",
+      "半経験的": "🧬",
+      "量子化学計算": "🧪",
+      "可視化と解析": "🔍",
+      "物性計算": "⚡",
+      "スペクトル計算": "📊",
+      "遷移状態計算": "🔄",
+      "システム・設定": "⚙️"
+    }
   },
-  "01_GeneralCalculation.py": {
+  "001_StructureCheck.py": {
     "visible": true,
-    "category": "基本計算"
+    "category": "前処理・ユーティリティ"
   },
-  "02_StructureCheck.py": {
+  "101_GeneralCalculation.py": {
     "visible": true,
-    "category": "基本計算"
+    "category": "統合・ワークフロー"
   },
-  "03_Singlepointcalculation.py": {
+  "201_RDKit_ConfSearch.py": {
     "visible": true,
-    "category": "基本計算"
+    "category": "分子力場"
   },
-  "04_Optimization.py": {
+  "211_openmm_singlepoint.py": {
     "visible": true,
-    "category": "基本計算"
+    "category": "分子力場"
   },
-  "05_ConformationalSearch.py": {
+  "301_mopac_singlepoint.py": {
     "visible": true,
-    "category": "基本計算"
+    "category": "半経験的"
   },
-  "06_OPTandFreq.py": {
+  "302_mopac_Opt.py": {
     "visible": true,
-    "category": "基本計算"
+    "category": "半経験的"
   },
-  "07_Visualization.py": {
+  "303_mopac_OptandFreq.py": {
+    "visible": true,
+    "category": "半経験的"
+  },
+  "304_mopac_Visualization.py": {
+    "visible": true,
+    "category": "半経験的"
+  },
+  "311_xtb_calculation_suite.py": {
+    "visible": true,
+    "category": "半経験的"
+  },
+  "401_Singlepointcalculation.py": {
+    "visible": true,
+    "category": "量子化学計算"
+  },
+  "402_Optimization.py": {
+    "visible": true,
+    "category": "量子化学計算"
+  },
+  "403_OPTandFreq.py": {
+    "visible": true,
+    "category": "量子化学計算"
+  },
+  "501_Visualization.py": {
     "visible": true,
     "category": "可視化と解析"
   },
-  "13_EnergyDecompositionAnalysis.py": {
+  "502_EDA.py": {
     "visible": true,
     "category": "可視化と解析"
   },
-  "13_xyz_fragment_decomposition.py": {
+  "503_xyz_fragment_decomposition.py": {
     "visible": true,
     "category": "可視化と解析"
   },
-  "13_ConformationalEnergyDecomposition.py": {
+  "504_ConformationalEnergyDecomposition.py": {
     "visible": true,
     "category": "可視化と解析"
   },
-  "09_IonizationPotencial.py": {
+  "601_IP.py": {
     "visible": true,
     "category": "物性計算"
   },
-  "09_Solvation.py": {
+  "602_Solvation.py": {
     "visible": true,
     "category": "物性計算"
   },
-  "10_BondDissociationEnergy.py": {
+  "603_BDE.py": {
     "visible": true,
     "category": "物性計算"
   },
-  "11_Pka.py": {
+  "604_Pka.py": {
     "visible": true,
     "category": "物性計算"
   },
-  "08_PropertyCalculationIR.py": {
+  "701_IR.py": {
     "visible": true,
     "category": "スペクトル計算"
   },
-  "08_PropertyCalculationNMR.py": {
+  "702_NMR.py": {
     "visible": true,
     "category": "スペクトル計算"
   },
-  "08_PropertyCalculationPolarizability.py": {
+  "703_Polar.py": {
     "visible": true,
     "category": "スペクトル計算"
   },
-  "12_UV_SpectrumPrediction.py": {
+  "704_UV.py": {
     "visible": true,
     "category": "スペクトル計算"
   },
-  "14_NEB.py": {
+  "801_NEB.py": {
     "visible": true,
     "category": "遷移状態計算"
   },
-  "14_TS.py": {
+  "802_TS.py": {
     "visible": true,
     "category": "遷移状態計算"
   },
-  "15_IRC.py": {
+  "803_IRC.py": {
     "visible": true,
     "category": "遷移状態計算"
   },
-  "16_DataBase.py": {
+  "901_DataBase.py": {
     "visible": true,
     "category": "システム・設定"
   },
-  "16_Summarization.py": {
+  "902_Summarization.py": {
     "visible": true,
     "category": "システム・設定"
   },
-  "99_SystemSettings.py": {
+  "903_SystemSettings.py": {
     "visible": true,
     "category": "システム・設定"
   },
-  "PageSettings.py": {
+  "904_PageSettings.py": {
     "visible": true,
     "category": "システム・設定"
-  },
-  "20_mopac_singlepoint.py": {
-    "visible": true,
-    "category": "半経験的"
-  },
-  "21_mopac_Opt.py": {
-    "visible": true,
-    "category": "半経験的"
-  },
-  "22_mopac_OptandFreq.py": {
-    "visible": true,
-    "category": "半経験的"
-  },
-  "23_mopac_Visualization.py": {
-    "visible": true,
-    "category": "半経験的"
   }
 }

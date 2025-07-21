@@ -1,19 +1,36 @@
-streamlit
-watchdog
-matplotlib
-rdkit==2024.9.6
-pyscf
-geometric
-pyberny
-py3Dmol
-stmol
-ipython_genutils
-dftd3
-plotly
-pandas
-ase
-scipy
+# ===== Web Application Framework =====
+streamlit                    # Web application framework
+watchdog                     # File system monitoring for auto-reload
 
-# pyscf github
-git+https://github.com/pyscf/properties
-git+https://github.com/pyscf/qsdopt
+# ===== Data Analysis & Scientific Computing =====
+pandas                       # Data manipulation and analysis
+scipy                        # Scientific computing library
+matplotlib                   # 2D plotting and visualization
+plotly                       # Interactive plotting and visualization
+
+# ===== Development Utilities =====
+ipython_genutils             # IPython utilities
+
+# ===== Chemical Informatics =====
+rdkit==2024.9.6             # Chemical informatics and molecule handling
+
+# ===== Molecular Visualization =====
+py3Dmol                      # 3D molecular visualization
+stmol                        # Streamlit integration for 3Dmol
+
+# ===== Geometry Optimization =====
+geometric                    # Geometry optimization engine
+pyberny                      # Internal coordinate geometry optimizer
+
+# ===== Molecular Dynamics =====
+openmm                       # Molecular dynamics simulation engine
+
+# ===== Quantum Chemistry & Computational Chemistry =====
+pyscf                        # Python-based Simulations of Chemistry Framework
+dftd3                        # DFT-D3 dispersion correction
+ase                          # Atomic Simulation Environment
+git+https://github.com/pyscf/properties  # PySCF extension: Additional properties calculations
+git+https://github.com/pyscf/qsdopt      # PySCF extension: Quantum system optimization
+
+
+
