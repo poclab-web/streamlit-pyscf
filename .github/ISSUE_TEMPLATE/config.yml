@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 💬 Discussion
+    url: https://github.com/poclab-web/streamlit-pyscf/discussions
+    about: 質問や一般的な議論はこちらで行ってください
+  - name: 📚 Documentation
+    url: https://github.com/poclab-web/streamlit-pyscf/blob/main/README.md
+    about: 使用方法やインストール手順を確認してください
+  - name: 🔬 PySCF Documentation
+    url: https://pyscf.org/
+    about: PySCF固有の問題については公式ドキュメントを参照してください

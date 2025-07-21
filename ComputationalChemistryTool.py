@@ -99,38 +99,10 @@ def home_page():
     # JSONからカテゴリ別ページ情報を取得
     pages_by_category = user_prefs.get_pages_by_category()
     
-    # カテゴリ説明を定義
-    category_descriptions = {
-        "基本計算": "分子構造最適化、一点エネルギー計算、配座解析",
-        "可視化と解析": "分子軌道可視化、エネルギー分解解析、フラグメント解析",
-        "物性計算": "イオン化ポテンシャル、溶媒効果、結合解離エネルギー、pKa計算",
-        "スペクトル計算": "IR、NMR、UV-Visスペクトル予測、分極率計算",
-        "遷移状態計算": "遷移状態探索、反応経路計算、IRC解析",
-        "半経験的": "半経験的手法による高速計算、PM6/PM7、AM1、MNDO、DFTB",
-        "システム・設定": "設定管理、データベース、結果集計"
-    }
-    
-    # カテゴリアイコンを定義
-    category_icons = {
-        "基本計算": "🧪",
-        "可視化と解析": "🔍",
-        "物性計算": "⚡",
-        "スペクトル計算": "📊",
-        "遷移状態計算": "🔄",
-        "半経験的": "🧬",
-        "システム・設定": "⚙️"
-    }
-    
-    # カテゴリの表示順序を定義
-    category_order = [
-        "基本計算",
-        "可視化と解析", 
-        "物性計算",
-        "スペクトル計算",
-        "遷移状態計算",
-        "半経験的",
-        "システム・設定"
-    ]
+    # JSONからカテゴリ設定を取得
+    category_descriptions = user_prefs.get_category_descriptions()
+    category_icons = user_prefs.get_category_icons()
+    category_order = user_prefs.get_category_order()
     
     for category in category_order:
         if category in pages_by_category:
@@ -240,16 +212,12 @@ def get_dynamic_pages():
     # 設定ファイルから表示するページを取得
     config_settings = user_prefs.load_page_visibility()
     
-    # カテゴリ別にページを分類
-    category_pages = {
-        "基本計算": [],
-        "可視化と解析": [],
-        "物性計算": [],
-        "スペクトル計算": [],
-        "遷移状態計算": [],
-        "半経験的": [],
-        "システム・設定": []
-    }
+    # JSONからカテゴリ設定を取得
+    category_order = user_prefs.get_category_order()
+    category_icons = user_prefs.get_category_icons()
+    
+    # カテゴリ別にページを分類（動的に取得）
+    category_pages = {category: [] for category in category_order}
     
     for file_name in sorted(page_files):
         if not config_settings.get(file_name, True):
@@ -265,11 +233,12 @@ def get_dynamic_pages():
         # JSONファイルからカテゴリを取得
         category = user_prefs.get_page_category(file_name)
         
-        # アイコンを決定
+        # アイコンをJSONから取得、デフォルトは設定アイコン
         icon = ":material/settings:"  # デフォルト
         url_prefix = "sys"  # デフォルト
         
-        if category == "基本計算":
+        # カテゴリに基づいてアイコンとURL接頭辞を決定
+        if category == "量子化学計算":
             icon = ":material/science:"
             url_prefix = "calc"
         elif category == "可視化と解析":
@@ -287,6 +256,9 @@ def get_dynamic_pages():
         elif category == "半経験的":
             icon = ":material/biotech:"
             url_prefix = "semi"
+        elif category == "分子力場":
+            icon = ":material/waves:"
+            url_prefix = "ff"
         elif category == "システム・設定":
             icon = ":material/settings:"
             url_prefix = "sys"
@@ -356,16 +328,9 @@ def settings_page():
             # JSONからカテゴリ別ページ情報を取得
             pages_by_category = user_prefs.get_pages_by_category()
             
-            # カテゴリの表示順序を定義
-            category_order = [
-                "基本計算",
-                "可視化と解析", 
-                "物性計算",
-                "スペクトル計算",
-                "遷移状態計算",
-                "半経験的",
-                "システム・設定"
-            ]
+            # JSONからカテゴリ設定を取得
+            category_order = user_prefs.get_category_order()
+            category_icons = user_prefs.get_category_icons()
             
             processed_files = set()  # 処理済みファイルを追跡
             
@@ -374,22 +339,8 @@ def settings_page():
                 if category in pages_by_category:
                     category_files = pages_by_category[category]
                     
-                    # カテゴリアイコンを決定
-                    category_icon = "📂"
-                    if category == "基本計算":
-                        category_icon = "🧪"
-                    elif category == "可視化と解析":
-                        category_icon = "🔍"
-                    elif category == "物性計算":
-                        category_icon = "⚡"
-                    elif category == "スペクトル計算":
-                        category_icon = "📊"
-                    elif category == "遷移状態計算":
-                        category_icon = "🔄"
-                    elif category == "半経験的":
-                        category_icon = "🧬"
-                    elif category == "システム・設定":
-                        category_icon = "⚙️"
+                    # JSONからカテゴリアイコンを取得
+                    category_icon = category_icons.get(category, "�")
                     
                     st.markdown(f"#### {category_icon} {category}")
                     
@@ -499,37 +450,16 @@ def settings_page():
         # JSONからカテゴリ別ページ情報を取得
         pages_by_category = user_prefs.get_pages_by_category()
         
-        # カテゴリの表示順序を定義
-        category_order = [
-            "基本計算",
-            "可視化と解析", 
-            "物性計算",
-            "スペクトル計算",
-            "遷移状態計算",
-            "半経験的",
-            "システム・設定"
-        ]
+        # JSONからカテゴリ設定を取得
+        category_order = user_prefs.get_category_order()
+        category_icons = user_prefs.get_category_icons()
         
         for category in category_order:
             if category in pages_by_category:
                 category_files = pages_by_category[category]
                 
-                # カテゴリアイコンを決定
-                category_icon = "📂"
-                if category == "基本計算":
-                    category_icon = "🧪"
-                elif category == "可視化と解析":
-                    category_icon = "🔍"
-                elif category == "物性計算":
-                    category_icon = "⚡"
-                elif category == "スペクトル計算":
-                    category_icon = "📊"
-                elif category == "遷移状態計算":
-                    category_icon = "🔄"
-                elif category == "半経験的":
-                    category_icon = "🧬"
-                elif category == "システム・設定":
-                    category_icon = "⚙️"
+                # JSONからカテゴリアイコンを取得
+                category_icon = category_icons.get(category, "�")
                 
                 st.markdown(f"#### {category_icon} {category}")
                 
