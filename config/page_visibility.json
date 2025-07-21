@@ -10,7 +10,7 @@
     },
     "availableCategories": [
       "基本計算",
-      "可視化と解析", 
+      "可視化と解析",
       "物性計算",
       "スペクトル計算",
       "遷移状態計算",
@@ -133,5 +133,13 @@
   "23_mopac_Visualization.py": {
     "visible": true,
     "category": "半経験的"
+  },
+  "openmm_singlepoint.py": {
+    "visible": true,
+    "category": "基本計算"
+  },
+  "xtb_calculation_suite.py": {
+    "visible": true,
+    "category": "基本計算"
   }
 }

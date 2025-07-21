@@ -1,6 +1,16 @@
-# streamlit-pyscf アーキテクチャ概要
+# Architecture
 
-ここの部分は、開発者用に記載
+## システム概要
+
+streamlit-pyscfは、PySCFとRDKitを基盤とした量子化学計算のWebアプリケーションです。
+
+### 主要コンポーネント
+
+1. **Streamlitフロントエンド**: ユーザーインターフェース
+2. **Logic Layer**: 計算ロジックとデータ処理
+3. **Controller Layer**: 高度な計算の制御
+4. **Configuration**: 設定管理
+5. **Data Storage**: 計算結果の永続化
 
 ## ディレクトリ構成
 
