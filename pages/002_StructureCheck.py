@@ -80,7 +80,7 @@ if st.button("Run Check Structure"):
         # pyscf input
         st.subheader("PySCF Input")
         pyscf_input = handler.to_pyscf_input()
-        st.text_area("PySCF Input", value=pyscf_input, height=300)
+        st.code("PySCF Input", value=pyscf_input, height=300)
 
 
 

@@ -3,7 +3,7 @@
     "description": "Streamlit PySCF アプリケーションのページ表示設定ファイル",
     "purpose": "各ページの表示/非表示とカテゴリ分類を管理",
     "version": "3.0",
-    "lastModified": "2025-07-21",
+    "lastModified": "2025-07-23",
     "numberingSystem": {
       "000-099": "前処理・ユーティリティ",
       "100-199": "統合・ワークフロー",
@@ -11,8 +11,8 @@
       "300-399": "半経験的",
       "400-499": "量子化学計算",
       "500-599": "可視化と解析",
-      "600-699": "物性計算",
-      "700-799": "スペクトル計算",
+      "600-699": "スペクトル計算",
+      "700-799": "物性計算",
       "800-899": "遷移状態計算",
       "900-999": "システム・設定"
     },
@@ -51,8 +51,8 @@
       "半経験的": "半経験的手法による高速計算、PM6/PM7、AM1、MNDO、DFTB、xTB",
       "量子化学計算": "分子構造最適化、一点エネルギー計算、配座解析",
       "可視化と解析": "分子軌道可視化、エネルギー分解解析、フラグメント解析",
-      "物性計算": "イオン化ポテンシャル、溶媒効果、結合解離エネルギー、pKa計算",
       "スペクトル計算": "IR、NMR、UV-Visスペクトル予測、分極率計算",
+      "物性計算": "イオン化ポテンシャル、溶媒効果、結合解離エネルギー、pKa計算",
       "遷移状態計算": "遷移状態探索、反応経路計算、IRC解析",
       "システム・設定": "設定管理、データベース、結果集計"
     },
@@ -63,13 +63,17 @@
       "半経験的": "🧬",
       "量子化学計算": "🧪",
       "可視化と解析": "🔍",
-      "物性計算": "⚡",
       "スペクトル計算": "📊",
+      "物性計算": "⚡",
       "遷移状態計算": "🔄",
       "システム・設定": "⚙️"
     }
   },
-  "001_StructureCheck.py": {
+  "001_Molecule_Structure_Viewer.py": {
+    "visible": true,
+    "category": "前処理・ユーティリティ"
+  },
+  "002_StructureCheck.py": {
     "visible": true,
     "category": "前処理・ユーティリティ"
   },
@@ -133,37 +137,37 @@
     "visible": true,
     "category": "可視化と解析"
   },
-  "601_IP.py": {
-    "visible": true,
-    "category": "物性計算"
-  },
-  "602_Solvation.py": {
-    "visible": true,
-    "category": "物性計算"
-  },
-  "603_BDE.py": {
-    "visible": true,
-    "category": "物性計算"
-  },
-  "604_Pka.py": {
-    "visible": true,
-    "category": "物性計算"
-  },
-  "701_IR.py": {
+  "601_IR.py": {
     "visible": true,
     "category": "スペクトル計算"
   },
-  "702_NMR.py": {
+  "602_NMR.py": {
     "visible": true,
     "category": "スペクトル計算"
   },
-  "703_Polar.py": {
+  "603_UV.py": {
     "visible": true,
     "category": "スペクトル計算"
   },
-  "704_UV.py": {
+  "701_Polar.py": {
     "visible": true,
-    "category": "スペクトル計算"
+    "category": "物性計算"
+  },
+  "702_Solvation.py": {
+    "visible": true,
+    "category": "物性計算"
+  },
+  "703_BDE.py": {
+    "visible": true,
+    "category": "物性計算"
+  },
+  "704_IP.py": {
+    "visible": true,
+    "category": "物性計算"
+  },
+  "705_Pka.py": {
+    "visible": true,
+    "category": "物性計算"
   },
   "801_NEB.py": {
     "visible": true,
