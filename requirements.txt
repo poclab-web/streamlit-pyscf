@@ -17,6 +17,7 @@ rdkit==2024.9.6             # Chemical informatics and molecule handling
 # ===== Molecular Visualization =====
 py3Dmol                      # 3D molecular visualization
 stmol                        # Streamlit integration for 3Dmol
+streamlit-ketcher            # Streamlit integration for Ketcher (chemical structure editor)
 
 # ===== Geometry Optimization =====
 geometric                    # Geometry optimization engine
